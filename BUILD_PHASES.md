@@ -297,7 +297,7 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 ### 1.7 Phase 1 tests
 
 - [x] `next_number` returns sequential numbers and resets each year.
-- [ ] `next_number` from 10 parallel threads gives 10 unique numbers (Postgres test DB). Written; skipped on SQLite, so it first runs in CI.
+- [x] `next_number` from 10 parallel threads gives 10 unique numbers (passes on Postgres in Docker).
 - [x] Product code is unique and stored upper-case.
 - [x] `change_price` writes PriceHistory and AuditLog.
 - [x] A salesperson gets 403 on product create, change-price and users.
@@ -307,9 +307,9 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 
 ### 1.8 Definition of done
 
-- [ ] `docker compose up` runs the API; `/health/` returns ok.
-- [ ] `/api/schema/swagger-ui/` shows all Phase 1 endpoints.
-- [ ] CI is green; staging is deployed with seed data and four test users (one per role).
+- [x] `docker compose up` runs the API; `/health/` returns ok.
+- [x] `/api/schema/swagger-ui/` shows all Phase 1 endpoints.
+- [ ] CI is green; staging is deployed with seed data and four test users (one per role). `manage.py seed_demo` loads the users and sample data (DEBUG only).
 - [ ] The client's product list is imported into staging.
 
 ### 1.9 Open questions to settle before the gate
@@ -589,7 +589,7 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 ### 2.5 Phase 2 tests
 
 - [x] Selling or releasing more than available raises `insufficient_stock`; balance unchanged.
-- [ ] **Concurrency:** two threads release the last 5 units at once → exactly one succeeds. Written; skipped on SQLite, so it first runs in CI on Postgres.
+- [x] **Concurrency:** two threads release the last 5 units at once → exactly one succeeds (passes on Postgres in Docker).
 - [x] Reserved stock cannot be sold by another order.
 - [x] Release without a request is impossible (no endpoint; service refuses `pending`, `rejected`, `cancelled`, `released`).
 - [x] Release above `qty_requested − qty_released` is refused.

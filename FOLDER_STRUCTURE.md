@@ -36,6 +36,8 @@ backend/
 │   │   ├── numbering.py              # next_number("SO") → SO-2026-00125
 │   │   ├── exceptions.py             # BusinessRuleError + DRF exception handler
 │   │   ├── views.py                  # GET /health/
+│   │   ├── management/commands/
+│   │   │   └── seed_demo.py          # Demo users, products, stock (DEBUG only)
 │   │   └── tests/
 │   │       ├── test_health.py
 │   │       └── test_numbering.py
