@@ -345,8 +345,8 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 
 ### 2.1 `inventory` app — models
 
-- [ ] First create the `Customer` model (fields in 3.1) and the "Walk-in Customer" data migration in the `customers` app. Stock movements and stock requests reference customers, so the model must exist now. Register `simple_history` on it. Customer endpoints and selectors stay in Phase 3.
-- [ ] `StockMovement` — **immutable**, never updated or deleted:
+- [x] First create the `Customer` model (fields in 3.1) and the "Walk-in Customer" data migration in the `customers` app. Stock movements and stock requests reference customers, so the model must exist now. Register `simple_history` on it. Customer endpoints and selectors stay in Phase 3.
+- [x] `StockMovement` — **immutable**, never updated or deleted:
 
 ```python
 class MovementType(models.TextChoices):
@@ -390,15 +390,15 @@ class StockMovement(models.Model):
         raise BusinessRuleError("immutable", "Stock movements cannot be deleted.")
 ```
 
-- [ ] `StockBalance`: `product`, `location`, `on_hand` (int ≥ 0), `reserved` (int ≥ 0), `updated_at`; `unique_together (product, location)`; DB `CheckConstraint`s for `on_hand >= 0`, `reserved >= 0` and `reserved <= on_hand`.
-- [ ] Add an **In Transit** virtual location (`code="TRANSIT"`, type `warehouse`, `can_sell=False`) by data migration, so transfers have a place to sit between out and in. Company totals always include it (D7).
-- [ ] `GoodsReceipt` + `GoodsReceiptLine`: `number` (GR-…), `location` (default Pawlos), `reference` (shipment / container / invoice no.), `received_at`, `note`; lines: `product`, `qty`.
-- [ ] `StockAdjustment`: `number` (ADJ-…), `location`, `product`, `qty_delta` (signed int), `reason` (`count` / `damage` / `loss` / `found`), `status` (`proposed` / `approved` / `rejected`), `proposed_by`, `approved_by`, `approved_at`.
-- [ ] `StockTransfer` + `StockTransferLine`: `number` (TR-…), `from_location`, `to_location`, `status` (`in_transit` / `received` / `cancelled`), `sent_by`, `received_by`, `received_at`, `stock_request` (FK, nullable).
+- [x] `StockBalance`: `product`, `location`, `on_hand` (int ≥ 0), `reserved` (int ≥ 0), `updated_at`; `unique_together (product, location)`; DB `CheckConstraint`s for `on_hand >= 0`, `reserved >= 0` and `reserved <= on_hand`.
+- [x] Add an **In Transit** virtual location (`code="TRANSIT"`, type `warehouse`, `can_sell=False`) by data migration, so transfers have a place to sit between out and in. Company totals always include it (D7).
+- [x] `GoodsReceipt` + `GoodsReceiptLine`: `number` (GR-…), `location` (default Pawlos), `reference` (shipment / container / invoice no.), `received_at`, `note`; lines: `product`, `qty`.
+- [x] `StockAdjustment`: `number` (ADJ-…), `location`, `product`, `qty_delta` (signed int), `reason` (`count` / `damage` / `loss` / `found`), `status` (`proposed` / `approved` / `rejected`), `proposed_by`, `approved_by`, `approved_at`.
+- [x] `StockTransfer` + `StockTransferLine`: `number` (TR-…), `from_location`, `to_location`, `status` (`in_transit` / `received` / `cancelled`), `sent_by`, `received_by`, `received_at`, `stock_request` (FK, nullable).
 
 ### 2.2 `inventory` services — the only way stock changes
 
-- [ ] `apps/inventory/services.py`:
+- [x] `apps/inventory/services.py`:
 
 ```python
 def _lock_balance(product, location) -> StockBalance:
@@ -471,22 +471,22 @@ def reverse_movement(*, movement, person, reason) -> StockMovement:
         person=person, note=reason, reverses=movement)
 ```
 
-- [ ] `apps/inventory/tasks.py::check_low_stock(product_id)`: a Celery task that does nothing for now. Phase 4.4 fills it in.
-- [ ] `reverse_movement` is a correction: callers must hold `correct_transactions` (D5, D6). It copies `transaction_number` from the original movement and writes an audit entry with the reason.
-- [ ] `receive_goods(location, reference, lines, user)` → creates a GoodsReceipt and one `receipt` movement per line (outside → Pawlos).
-- [ ] `propose_adjustment(...)` and `approve_adjustment(adjustment, user)`; approval posts an `adjustment` movement (negative delta = from location, positive = to location).
-- [ ] `send_transfer(from, to, lines, user, stock_request=None)` → `transfer_out` movements (from → TRANSIT), status `in_transit`.
-- [ ] `receive_transfer(transfer, user, received_lines)` → `transfer_in` movements (TRANSIT → to), status `received`. A short receipt raises a discrepancy note for the accountant.
-- [ ] Management command `rebuild_stock_balances [--check]`: recomputes balances from movements; `--check` only reports mismatches. Scheduled nightly in Phase 4.
+- [x] `apps/inventory/tasks.py::check_low_stock(product_id)`: a Celery task that does nothing for now. Phase 4.4 fills it in.
+- [x] `reverse_movement` is a correction: callers must hold `correct_transactions` (D5, D6). It copies `transaction_number` from the original movement and writes an audit entry with the reason.
+- [x] `receive_goods(location, reference, lines, user)` → creates a GoodsReceipt and one `receipt` movement per line (outside → Pawlos).
+- [x] `propose_adjustment(...)` and `approve_adjustment(adjustment, user)`; approval posts an `adjustment` movement (negative delta = from location, positive = to location).
+- [x] `send_transfer(from, to, lines, user, stock_request=None)` → `transfer_out` movements (from → TRANSIT), status `in_transit`.
+- [x] `receive_transfer(transfer, user, received_lines)` → `transfer_in` movements (TRANSIT → to), status `received`. A short receipt raises a discrepancy note for the accountant.
+- [x] Management command `rebuild_stock_balances [--check]`: recomputes balances from movements; `--check` only reports mismatches. Scheduled nightly in Phase 4.
 
 ### 2.3 `requests` app — Pawlos stock requests
 
-- [ ] Models:
+- [x] Models:
   - `StockRequest`: `number` (SR-…), `requesting_location`, `source_location` (default Pawlos), `order` (FK → SalesOrder, nullable; the field is added by a Phase 3 migration once SalesOrder exists), `transaction_number` (the order's SO-… number, or the request's own SR-… number when there is no order — D4), `customer` (nullable), `salesperson`, `status`, `notes`, `acknowledged_by`, `acknowledged_at`.
   - `StockRequestLine`: `request`, `product`, `qty_requested`, `qty_released` (default 0).
   - `StockRelease`: `number` (SRL-…), `request`, `released_by`, `released_at`, `destination_type` (`branch` / `customer_pickup`), `note`.
   - `StockReleaseLine`: `release`, `product`, `qty`.
-- [ ] Status machine (enforced in services, never set directly by the API):
+- [x] Status machine (enforced in services, never set directly by the API):
 
 ```
 pending ──acknowledge──▶ acknowledged ──release(partial)──▶ partially_released
@@ -496,7 +496,7 @@ pending ──acknowledge──▶ acknowledged ──release(partial)──▶ 
    └──cancel──▶ cancelled                          close──▶ closed
 ```
 
-- [ ] Services `apps/requests/services.py`:
+- [x] Services `apps/requests/services.py`:
   - `create_stock_request(requesting_location, lines, salesperson, order=None, customer=None, notes="")`
     - reserves each line at the source location (`reserve`)
     - writes a `stock_request.created` notification to the outbox (the outbox model arrives in Phase 4, so for now create `notify()` in `apps/notifications/services.py` as a stub that does nothing)
@@ -549,7 +549,20 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
   - If the client answers Q16 with "requests need approval", add an `approved` state between `pending` and `acknowledged`, guarded by a new permission. The rule "no release without a request" holds either way.
   - `reject_request(request, storekeeper, reason)` → releases reservations.
   - `cancel_request(request, user, reason)` → salesperson (own, before any release) or admin; releases reservations.
-- [ ] **Rule enforcement:** there is no endpoint that lets a storekeeper move stock without a `request_id`. Storekeepers have no access to `adjustments/approve`, `transfers` create, or `post_movement` directly.
+- [x] **Rule enforcement:** stock never *leaves* a location without a document: a stock request release, an approved adjustment, or a manual transfer by an accountant or admin. Storekeepers can bring stock *in* (goods receipts at their own location), propose adjustments, and acknowledge, release or reject requests at their own warehouse. They cannot approve adjustments, send manual transfers, reverse movements, or **create stock requests**: the person who releases stock must never be the one who requested it.
+
+### 2.2a Implementation notes (where the code differs from the snippets above, and why)
+
+- **Releases use only their own reservation.** The snippet's `allow_reserved=True` treated *all* on-hand stock as available, so one release could take units reserved for another request. `post_movement(consume_reservation=True)` now requires `qty ≤ reserved` and lowers both `on_hand` and `reserved`.
+- **No silent fixes.** `unreserve` and `consume_reservation` raise `reservation_mismatch` instead of `max(0, …)`, which would hide reservations drifting away from open requests.
+- **Locking:** balance rows are created race-free (insert-if-missing) and locked in location-id order, so two movements can never deadlock. Joined `FOR UPDATE` queries lock only their own rows (`of=("self",)`), which Postgres requires when an optional relation is joined.
+- **Low-stock queueing never breaks a sale.** The check is queued after commit, and a broker failure is only logged. Otherwise a saved movement could return an error and be posted twice on retry.
+- **Reversal scope:** the API reverses only movements with no owning document (goods receipts). Request, transfer and sale movements are corrected through their document (Phase 3 `void_order` uses `reverse_movement(internal=True)`). A reversal cannot itself be reversed.
+- **Adjustments:** also `opening_balance` as a reason (Phase 5 import). An accountant cannot approve an adjustment they proposed; an admin can. Approval re-checks free stock.
+- **Short receipts:** units not received stay in TRANSIT, so company totals stay correct, and the transfer gets a discrepancy note. The accountant clears them with an approved adjustment at TRANSIT.
+- **Requests:** a free-text `reference` holds the customer/order reference until sales orders exist. `close_request` ends a partly released request and frees what is left; cancel works only before any release. Customer pickup requires the request to name the customer. Reject, cancel and close require a reason.
+- **The In Transit location** cannot be edited or deactivated through `/locations/`.
+- **`rebuild_stock_balances`** checks `reserved` against open requests as well as `on_hand` against the ledger. It refuses to "fix" an impossible ledger, and audits every fix.
 
 ### 2.4 Phase 2 endpoints
 
@@ -565,32 +578,35 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 | `POST /api/v1/adjustments/{id}/approve/` · `/reject/` | `approve_adjustments` | |
 | `POST /api/v1/transfers/` | admin, accountant | Transfers not tied to a request |
 | `POST /api/v1/transfers/{id}/receive/` | branch staff of destination, admin | |
-| `GET/POST /api/v1/stock-requests/` | salesperson (own branch), storekeeper (own warehouse), accountant (read), admin | |
+| `GET /api/v1/stock-requests/` | salesperson (own branch), storekeeper (own warehouse), accountant, admin | Search by number, transaction, reference, customer, product code |
+| `POST /api/v1/stock-requests/` | salesperson (own branch), admin | `requesting_location` defaults to your branch, `source_location` to Pawlos |
 | `POST /api/v1/stock-requests/{id}/acknowledge/` | storekeeper, admin | |
 | `POST /api/v1/stock-requests/{id}/release/` | storekeeper, admin | Body: `{"destination_type": "...", "lines": [{"line_id": 1, "qty": 5}]}` |
-| `POST /api/v1/stock-requests/{id}/reject/` · `/cancel/` | storekeeper / requester, admin | |
+| `POST /api/v1/stock-requests/{id}/reject/` · `/cancel/` | storekeeper / requester, admin | Reason required |
+| `POST /api/v1/stock-requests/{id}/close/` | requester, source storekeeper, admin | Ends a partly released request; frees the rest |
+| `GET /api/v1/goods-receipts/` · `/adjustments/` · `/transfers/` | stock staff (own location) / all for accountant, admin | Transfers: anyone whose location is the source or destination |
 
 ### 2.5 Phase 2 tests
 
-- [ ] Selling or releasing more than available raises `insufficient_stock`; balance unchanged.
-- [ ] **Concurrency:** two threads release the last 5 units at once → exactly one succeeds.
-- [ ] Reserved stock cannot be sold by another order.
-- [ ] Release without a request is impossible (no endpoint; service refuses `pending`, `rejected`, `cancelled`, `released`).
-- [ ] Release above `qty_requested − qty_released` is refused.
-- [ ] Partial release → status `partially_released`; remaining reservation is correct.
-- [ ] Storekeeper from another location cannot release.
-- [ ] Transfer out + in leaves TRANSIT at zero and destination increased.
-- [ ] `reverse_movement` restores balances and cannot be applied twice.
-- [ ] Reversing a movement or approving an adjustment without the permission returns 403, even for an accountant.
-- [ ] Stock summary: Total = sum of every location column + In transit; a sent-but-not-received transfer leaves Total unchanged.
-- [ ] Every movement from a request release carries the request's `transaction_number`.
-- [ ] **Property test:** after a random sequence of 200 operations, every `StockBalance.on_hand` equals the sum of its movements (`rebuild_stock_balances --check` reports zero mismatches).
-- [ ] StockMovement `save()` on an existing row and `delete()` both raise.
+- [x] Selling or releasing more than available raises `insufficient_stock`; balance unchanged.
+- [ ] **Concurrency:** two threads release the last 5 units at once → exactly one succeeds. Written; skipped on SQLite, so it first runs in CI on Postgres.
+- [x] Reserved stock cannot be sold by another order.
+- [x] Release without a request is impossible (no endpoint; service refuses `pending`, `rejected`, `cancelled`, `released`).
+- [x] Release above `qty_requested − qty_released` is refused.
+- [x] Partial release → status `partially_released`; remaining reservation is correct.
+- [x] Storekeeper from another location cannot release.
+- [x] Transfer out + in leaves TRANSIT at zero and destination increased.
+- [x] `reverse_movement` restores balances and cannot be applied twice.
+- [x] Reversing a movement or approving an adjustment without the permission returns 403, even for an accountant.
+- [x] Stock summary: Total = sum of every location column + In transit; a sent-but-not-received transfer leaves Total unchanged.
+- [x] Every movement from a request release carries the request's `transaction_number`.
+- [x] **Property test:** after a random sequence of 200 operations, every `StockBalance.on_hand` equals the sum of its movements (`rebuild_stock_balances --check` reports zero mismatches).
+- [x] StockMovement `save()` on an existing row and `delete()` both raise.
 
 ### 2.6 Definition of done
 
 - [ ] Goods receipt, transfer, adjustment and request → release all work on staging through Swagger.
-- [ ] The stock summary endpoint returns the Piassa / (Underground) / Denbel / Pawlos / In transit / Total matrix.
+- [x] The stock summary endpoint returns the Piassa / (Underground) / Denbel / Pawlos / In transit / Total matrix.
 - [ ] `rebuild_stock_balances --check` reports no mismatch on staging.
 - [ ] Client demo: storekeeper releases a partial request; the client signs the gate.
 

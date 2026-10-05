@@ -86,7 +86,7 @@ backend/
 │   │   │                             # StockAdjustment, StockTransfer(+Line)
 │   │   ├── services.py               # post_movement(), reserve(), unreserve(), reverse_movement(),
 │   │   │                             # receive_goods(), propose/approve_adjustment(),
-│   │   │                             # send_transfer(), receive_transfer()
+│   │   │                             # send_transfer(), create_transfer(), receive_transfer()
 │   │   ├── selectors.py
 │   │   ├── tasks.py                  # check_low_stock (stub in Phase 2), nightly_stock_check
 │   │   ├── management/commands/
@@ -99,9 +99,11 @@ backend/
 │   ├── requests/                     # Phase 2 — Pawlos stock requests and releases
 │   │   ├── models.py                 # StockRequest(+Line), StockRelease(+Line)
 │   │   ├── services.py               # create_stock_request(), acknowledge_request(),
-│   │   │                             # release_stock(), reject_request(), cancel_request()
+│   │   │                             # release_stock(), reject_request(), cancel_request(),
+│   │   │                             # close_request()
 │   │   ├── selectors.py
-│   │   └── api/                      # /stock-requests/ (+ acknowledge, release, reject, cancel)
+│   │   └── api/                      # /stock-requests/ (+ acknowledge, release, reject, cancel,
+│   │                                 # close)
 │   │
 │   ├── sales/                        # Phase 3 — orders and delivery notes
 │   │   ├── models.py                 # SalesOrder(+Line), DeliveryNote(+Line)
