@@ -49,7 +49,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
-    # "apps.audit.middleware.AuditContextMiddleware",  # Phase 1.6
+    "apps.audit.middleware.AuditContextMiddleware",
     "axes.middleware.AxesMiddleware",  # keep last
 ]
 
@@ -116,7 +116,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.OrderingFilter",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    # "EXCEPTION_HANDLER": "apps.core.exceptions.exception_handler",  # Phase 1.2
+    "EXCEPTION_HANDLER": "apps.core.exceptions.exception_handler",
 }
 
 SIMPLE_JWT = {
