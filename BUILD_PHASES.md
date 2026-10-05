@@ -33,7 +33,7 @@ How to use this file:
 
 ### 1.1 Project setup
 
-- [ ] Create the repo `furniture-erp` with `main` and `develop` branches.
+- [x] Create the repo with `main` and `develop` branches (local; push to GitHub to enable CI).
 - [x] Skeleton created in `backend/`: the full layout from `FOLDER_STRUCTURE.md` (all 12 apps, with placeholder files for later phases) plus the config, Docker, CI and requirements files below. CI lives at the repo root in `.github/workflows/ci.yml` and runs inside `backend/`. Top level:
 
 ```
@@ -63,7 +63,7 @@ backend/
   manage.py
 ```
 
-- [ ] `requirements/base.txt`:
+- [x] `requirements/base.txt`:
 
 ```
 Django>=5.1,<5.2
@@ -85,22 +85,22 @@ gunicorn>=22
 sentry-sdk>=2.10
 ```
 
-- [ ] `requirements/dev.txt`: `-r base.txt`, `pytest`, `pytest-django`, `pytest-cov`, `factory-boy`, `ruff`, `mypy`, `django-stubs`, `coverage`.
-- [ ] `docker-compose.yml` with services: `db` (postgres:16), `redis`, `api`, `worker`, `beat`. The `bot` service is added in Phase 4. Beat uses Celery's built-in scheduler, with the schedule defined in `config/celery.py`.
-- [ ] `Dockerfile` installs the Pango/HarfBuzz system libraries WeasyPrint needs (used for delivery note PDFs in Phase 3).
-- [ ] Split settings: `base.py` (shared), `dev.py` (DEBUG, local DB), `prod.py` (security headers, Sentry, HTTPS).
-- [ ] Settings essentials:
+- [x] `requirements/dev.txt`: `-r base.txt`, `pytest`, `pytest-django`, `pytest-cov`, `factory-boy`, `ruff`, `mypy`, `django-stubs`, `coverage`.
+- [x] `docker-compose.yml` with services: `db` (postgres:16), `redis`, `api`, `worker`, `beat`. The `bot` service is added in Phase 4. Beat uses Celery's built-in scheduler, with the schedule defined in `config/celery.py`.
+- [x] `Dockerfile` installs the Pango/HarfBuzz system libraries WeasyPrint needs (used for delivery note PDFs in Phase 3).
+- [x] Split settings: `base.py` (shared), `dev.py` (DEBUG, local DB), `prod.py` (security headers, Sentry, HTTPS).
+- [x] Settings essentials:
   - `DATABASES` from `DATABASE_URL` via `dj-database-url`
   - `TIME_ZONE = "Africa/Addis_Ababa"`, `USE_TZ = True`
   - `AUTH_USER_MODEL = "accounts.User"`
   - DRF defaults: JWT auth, `IsAuthenticated`, `PageNumberPagination` (page size 25), `DjangoFilterBackend`, `SearchFilter`, `OrderingFilter`
   - `SPECTACULAR_SETTINGS` with title "Furniture ERP API"
 - [ ] CI with GitHub Actions (`.github/workflows/ci.yml`): ruff → `makemigrations --check` → pytest with a Postgres service → build the Docker image.
-- [ ] Health endpoint `GET /health/` (`apps/core/views.py`) returning `{"status": "ok"}` after checking the DB connection, or 503 if the DB is down.
+- [x] Health endpoint `GET /health/` (`apps/core/views.py`) returning `{"status": "ok"}` after checking the DB connection, or 503 if the DB is down.
 
 ### 1.2 `core` app — shared base pieces
 
-- [ ] `apps/core/models.py`:
+- [x] `apps/core/models.py`:
 
 ```python
 from django.conf import settings
@@ -135,7 +135,7 @@ class DocumentSequence(models.Model):
         unique_together = ("prefix", "year")
 ```
 
-- [ ] `apps/core/numbering.py` — gapless document numbers:
+- [x] `apps/core/numbering.py` — gapless document numbers:
 
 ```python
 from django.db import transaction
@@ -146,25 +146,28 @@ from .models import DocumentSequence
 
 def next_number(prefix: str) -> str:
     """Return e.g. 'SO-2026-00125'. Must be called inside transaction.atomic()."""
-    assert transaction.get_connection().in_atomic_block, "next_number needs a transaction"
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError("next_number() must be called inside transaction.atomic()")
     year = timezone.localdate().year
-    seq, _ = DocumentSequence.objects.select_for_update().get_or_create(
-        prefix=prefix, year=year
+    # Insert-if-missing first, so two callers starting a new year don't race on create.
+    DocumentSequence.objects.bulk_create(
+        [DocumentSequence(prefix=prefix, year=year)], ignore_conflicts=True
     )
+    seq = DocumentSequence.objects.select_for_update().get(prefix=prefix, year=year)
     seq.last_number += 1
     seq.save(update_fields=["last_number"])
     return f"{prefix}-{year}-{seq.last_number:05d}"
 ```
 
-- [ ] `apps/core/exceptions.py` — `BusinessRuleError(code, message)`, mapped to HTTP 400 with `{"code": ..., "detail": ...}` by a custom DRF exception handler.
-- [ ] Prefixes used across the project: `SO` (sales order), `DN` (delivery note), `SR` (stock request), `SRL` (stock release), `TR` (transfer), `GR` (goods receipt), `ADJ` (adjustment), `PAY` (payment), `MV` (movement).
+- [x] `apps/core/exceptions.py` — `BusinessRuleError(code, message)`, mapped to HTTP 400 with `{"code": ..., "detail": ...}` by a custom DRF exception handler.
+- [x] Prefixes used across the project: `SO` (sales order), `DN` (delivery note), `SR` (stock request), `SRL` (stock release), `TR` (transfer), `GR` (goods receipt), `ADJ` (adjustment), `PAY` (payment), `MV` (movement).
 
 ### 1.3 `accounts` app — users and roles
 
-- [ ] `User(AbstractUser)` fields: `full_name`, `phone`, `role` (choices: `salesperson`, `storekeeper`, `accountant`, `admin`), `home_location` (FK → Location, nullable), `telegram_id` (BigInteger, unique, nullable), `allowed_payment_accounts` (M2M → PaymentAccount, added in Phase 3).
-- [ ] `User.home_location` → `Location` and `Location.created_by` → `User` point at each other. Generate the `accounts` and `locations` migrations in one `makemigrations` run so Django can split the cycle.
-- [ ] Data migration that creates Django Groups for the four roles. A `post_save` signal keeps the group in sync with `role`.
-- [ ] `apps/accounts/permissions.py`:
+- [x] `User(AbstractUser)` fields: `full_name`, `phone`, `role` (choices: `salesperson`, `storekeeper`, `accountant`, `admin`), `home_location` (FK → Location, nullable), `telegram_id` (BigInteger, unique, nullable), `allowed_payment_accounts` (M2M → PaymentAccount, added in Phase 3).
+- [x] `User.home_location` → `Location` and `Location.created_by` → `User` point at each other. Generate the `accounts` and `locations` migrations in one `makemigrations` run so Django can split the cycle.
+- [x] Data migration that creates Django Groups for the four roles. A `post_save` signal keeps the group in sync with `role`.
+- [x] `apps/accounts/permissions.py`:
 
 ```python
 from rest_framework.permissions import BasePermission
@@ -188,9 +191,9 @@ IsSalesStaff = role_permission("salesperson", "accountant", "admin")
 IsStorekeeper = role_permission("storekeeper", "admin")
 ```
 
-- [ ] `TelegramLinkToken` model: `user`, `token` (8 characters, unique), `expires_at` (now + 10 minutes), `used_at`.
-- [ ] django-axes configured: lock out after 5 failed logins for 30 minutes.
-- [ ] Endpoints:
+- [x] `TelegramLinkToken` model: `user`, `token` (8 characters, unique), `expires_at` (now + 10 minutes), `used_at`.
+- [x] django-axes configured: lock out after 5 failed logins for 30 minutes.
+- [x] Endpoints:
   - `POST /api/v1/auth/token/` and `POST /api/v1/auth/refresh/` (simplejwt; access 15 min, refresh 7 days, rotation on)
   - `GET /api/v1/auth/me/` → id, name, role, home_location, permissions list
   - `POST /api/v1/auth/telegram/link-code/` → creates a one-time code for the current user
@@ -198,8 +201,8 @@ IsStorekeeper = role_permission("storekeeper", "admin")
 
 ### 1.4 `locations` app
 
-- [ ] `Location(ActiveModel)`: `code` (unique: `PIA`, `DEN`, `PAW`, `PIA-UG`), `name`, `type` (`shop` / `warehouse` / `sub_store`), `parent` (FK self, nullable), `can_sell` (bool), `can_release` (bool).
-- [ ] Data migration that seeds:
+- [x] `Location(ActiveModel)`: `code` (unique: `PIA`, `DEN`, `PAW`, `PIA-UG`), `name`, `type` (`shop` / `warehouse` / `sub_store`), `parent` (FK self, nullable), `can_sell` (bool), `can_release` (bool).
+- [x] Data migration that seeds:
 
 | code | name | type | parent | can_sell | can_release |
 | --- | --- | --- | --- | --- | --- |
@@ -208,16 +211,16 @@ IsStorekeeper = role_permission("storekeeper", "admin")
 | DEN | Denbel Branch | shop | — | yes | no |
 | PAW | Pawlos Warehouse | warehouse | — | yes (pickup) | yes |
 
-- [ ] Endpoint `GET/POST/PATCH /api/v1/locations/` → read for all, write for admin only.
+- [x] Endpoint `GET/POST/PATCH /api/v1/locations/` → read for all, write for admin only.
 
 ### 1.5 `catalog` app — products (no cost price)
 
-- [ ] `Category(ActiveModel)`: `name`, `parent` (FK self, nullable).
-- [ ] `Unit(models.Model)`: `name`, `symbol` (seed: pcs, set).
-- [ ] `Product(ActiveModel)`: `code` (unique, upper-cased on save, e.g. `VC-001`), `name`, `category` FK, `unit` FK, `selling_price` (Decimal 14,2), `min_stock` (int, default 0), `description` (optional).
+- [x] `Category(ActiveModel)`: `name`, `parent` (FK self, nullable).
+- [x] `Unit(models.Model)`: `name`, `symbol` (seed: pcs, set).
+- [x] `Product(ActiveModel)`: `code` (unique, upper-cased on save, e.g. `VC-001`), `name`, `category` FK, `unit` FK, `selling_price` (Decimal 14,2), `min_stock` (int, default 0), `description` (optional).
   - **Do not add** cost, purchase price or profit fields.
-- [ ] `PriceHistory`: `product`, `old_price`, `new_price`, `changed_by`, `changed_at`, `reason`.
-- [ ] Service `apps/catalog/services.py`:
+- [x] `PriceHistory`: `product`, `old_price`, `new_price`, `changed_by`, `changed_at`, `reason`.
+- [x] Service `apps/catalog/services.py`:
 
 ```python
 @transaction.atomic
@@ -234,31 +237,31 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
     return product
 ```
 
-- [ ] Seed categories: Office chairs, Visitor chairs, Executive chairs, Desks, Tables, Shelves, Cabinets, Other office furniture.
-- [ ] Endpoints:
+- [x] Seed categories: Office chairs, Visitor chairs, Executive chairs, Desks, Tables, Shelves, Cabinets, Other office furniture.
+- [x] Endpoints:
   - `GET /api/v1/products/?search=&category=&is_active=` → search over code and name
   - `POST /api/v1/products/`, `PATCH /api/v1/products/{id}/` → admin only; `selling_price` is read-only here
   - `POST /api/v1/products/{id}/change-price/` → admin only
   - `GET /api/v1/categories/`, `GET /api/v1/units/`
-- [ ] Management command `import_products <file.xlsx>` to load the client's current product list (code, name, category, unit, price).
+- [x] Management command `import_products <file.xlsx>` to load the client's current product list (code, name, category, unit, price).
 
 ### 1.6 `audit` app
 
-- [ ] `AuditLog`: `actor` FK, `action` (string), `model` (string), `object_id` (string), `before` (JSON), `after` (JSON), `reason`, `source` (`web` / `bot` / `system`), `ip`, `at` (auto, indexed).
-- [ ] Helper `apps/audit/services.py::audit_log(actor, action, obj, before=None, after=None, reason="", source="web")`.
-- [ ] Middleware `apps/audit/middleware.py` that stores the request IP and source (`X-Client: bot` header → `bot`) in a context variable for `audit_log` to read.
-- [ ] Register `simple_history` on Product, Customer, PaymentAccount, Location and User for field-level history.
-- [ ] Endpoint `GET /api/v1/audit/?model=&object_id=&actor=&from=&to=` → accountant (read) and admin.
-- [ ] The AuditLog admin is read-only: no add, change or delete.
+- [x] `AuditLog`: `actor` FK, `action` (string), `model` (string), `object_id` (string), `before` (JSON), `after` (JSON), `reason`, `source` (`web` / `bot` / `system`), `ip`, `at` (auto, indexed).
+- [x] Helper `apps/audit/services.py::audit_log(actor, action, obj, before=None, after=None, reason="", source="web")`.
+- [x] Middleware `apps/audit/middleware.py` that stores the request IP and source (`X-Client: bot` header → `bot`) in a context variable for `audit_log` to read.
+- [x] Register `simple_history` on Product, Customer, PaymentAccount, Location and User for field-level history.
+- [x] Endpoint `GET /api/v1/audit/?model=&object_id=&actor=&from=&to=` → accountant (read) and admin.
+- [x] The AuditLog admin is read-only: no add, change or delete.
 
 ### 1.7 Phase 1 tests
 
-- [ ] `next_number` returns sequential numbers and resets each year.
-- [ ] `next_number` from 10 parallel threads gives 10 unique numbers (Postgres test DB).
-- [ ] Product code is unique and stored upper-case.
-- [ ] `change_price` writes PriceHistory and AuditLog.
-- [ ] A salesperson gets 403 on product create, change-price and users.
-- [ ] Login lockout after 5 bad passwords.
+- [x] `next_number` returns sequential numbers and resets each year.
+- [ ] `next_number` from 10 parallel threads gives 10 unique numbers (Postgres test DB). Written; skipped on SQLite, so it first runs in CI.
+- [x] Product code is unique and stored upper-case.
+- [x] `change_price` writes PriceHistory and AuditLog.
+- [x] A salesperson gets 403 on product create, change-price and users.
+- [x] Login lockout after 5 bad passwords.
 
 ### 1.8 Definition of done
 
