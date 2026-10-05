@@ -6,7 +6,12 @@ from rest_framework.views import APIView
 from apps.accounts import selectors, services
 from apps.accounts.permissions import IsAdmin
 
-from .serializers import LinkCodeSerializer, MeSerializer, UserSerializer
+from .serializers import (
+    ERPPermissionSerializer,
+    LinkCodeSerializer,
+    MeSerializer,
+    UserSerializer,
+)
 
 
 class MeView(APIView):
@@ -20,6 +25,21 @@ class TelegramLinkCodeView(APIView):
     def post(self, request):
         token = services.create_link_code(user=request.user)
         return Response(LinkCodeSerializer(token).data, status=status.HTTP_201_CREATED)
+
+
+class ERPPermissionListView(APIView):
+    """The permissions an admin can grant per user, and each role's defaults."""
+
+    @extend_schema(responses=ERPPermissionSerializer(many=True))
+    def get(self, request):
+        return Response(ERPPermissionSerializer.all_permissions())
+
+
+def _permissions_arg(data: dict) -> dict:
+    """The serializer reads/writes `erp_permissions`; services take `permissions`."""
+    if "erp_permissions" in data:
+        data["permissions"] = data.pop("erp_permissions")
+    return data
 
 
 class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
@@ -36,10 +56,10 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         return selectors.staff_users()
 
     def perform_create(self, serializer):
-        serializer.instance = services.create_user(actor=self.request.user,
-                                                   **serializer.validated_data)
+        serializer.instance = services.create_user(
+            actor=self.request.user, **_permissions_arg(dict(serializer.validated_data)))
 
     def perform_update(self, serializer):
-        serializer.instance = services.update_user(actor=self.request.user,
-                                                   user=serializer.instance,
-                                                   **serializer.validated_data)
+        serializer.instance = services.update_user(
+            actor=self.request.user, user=serializer.instance,
+            **_permissions_arg(dict(serializer.validated_data)))

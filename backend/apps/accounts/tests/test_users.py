@@ -57,8 +57,8 @@ def test_role_change_is_audited(client_for, make_user):
 
     assert response.status_code == 200
     log = AuditLog.objects.get(action="user_updated", object_id=str(user.id))
-    assert log.before == {"role": "salesperson"}
-    assert log.after == {"role": "accountant"}
+    assert log.before["role"] == "salesperson"
+    assert log.after["role"] == "accountant"
 
 
 @pytest.mark.django_db

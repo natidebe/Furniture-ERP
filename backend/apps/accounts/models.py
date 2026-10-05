@@ -15,6 +15,37 @@ class Role(models.TextChoices):
     ADMIN = "admin"
 
 
+class ERPPermission(models.TextChoices):
+    """Grantable per user by an admin. Admins always have all of them."""
+
+    VIEW_PERSONAL_PAYMENTS = "view_personal_payments", "See Personal-account payments and totals"
+    VERIFY_PAYMENTS = "verify_payments", "Verify or reject recorded payments"
+    CORRECT_PAYMENTS = "correct_payments", "Reverse and re-record payments"
+    CORRECT_TRANSACTIONS = "correct_transactions", "Void or correct sales and stock movements"
+    APPROVE_ADJUSTMENTS = "approve_adjustments", "Approve stock adjustments"
+    APPROVE_CREDIT = "approve_credit", "Confirm sales beyond a customer's credit rules"
+    APPROVE_DISCOUNTS = "approve_discounts", "Give discounts above the salesperson limit"
+    EXPORT_REPORTS = "export_reports", "Export reports to Excel"
+
+
+# Applied when a user is created or their role changes; the admin can then add or remove.
+# Accountants correct sales/stock only "when authorized", so that one is granted per user.
+ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "salesperson": (),
+    "storekeeper": (),
+    "accountant": (
+        ERPPermission.VIEW_PERSONAL_PAYMENTS,
+        ERPPermission.VERIFY_PAYMENTS,
+        ERPPermission.CORRECT_PAYMENTS,
+        ERPPermission.APPROVE_ADJUSTMENTS,
+        ERPPermission.APPROVE_CREDIT,
+        ERPPermission.APPROVE_DISCOUNTS,
+        ERPPermission.EXPORT_REPORTS,
+    ),
+    "admin": tuple(ERPPermission.values),
+}
+
+
 class ERPUserManager(UserManager):
     def create_superuser(self, username, email=None, password=None, **extra_fields):
         extra_fields.setdefault("role", Role.ADMIN)
@@ -33,8 +64,28 @@ class User(AbstractUser):
     history = HistoricalRecords()
     objects = ERPUserManager()
 
+    class Meta:
+        permissions = [(p.value, p.label) for p in ERPPermission]
+
     def __str__(self):
         return self.full_name or self.username
+
+    @property
+    def erp_permissions(self) -> list[str]:
+        """ERP permissions granted to this user directly (not counting the admin role)."""
+        return sorted(self.user_permissions.filter(
+            content_type__app_label="accounts", codename__in=ERPPermission.values,
+        ).values_list("codename", flat=True))
+
+    def effective_erp_permissions(self) -> list[str]:
+        if self.role == Role.ADMIN or self.is_superuser:
+            return sorted(ERPPermission.values)
+        return self.erp_permissions
+
+    def has_erp_permission(self, permission: str) -> bool:
+        if not (self.is_active and self.is_authenticated):
+            return False
+        return self.role == Role.ADMIN or self.has_perm(f"accounts.{permission}")
 
     def save(self, *args, **kwargs):
         if not self.full_name:

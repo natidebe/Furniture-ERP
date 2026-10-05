@@ -19,6 +19,19 @@ IsSalesStaff = role_permission("salesperson", "accountant", "admin")
 IsStorekeeper = role_permission("storekeeper", "admin")
 
 
+class HasERPPermission(BasePermission):
+    permission: str = ""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.has_erp_permission(self.permission))
+
+
+def erp_permission(permission):
+    """erp_permission(ERPPermission.VERIFY_PAYMENTS) → DRF permission class."""
+    return type("ERPPermissionCheck", (HasERPPermission,), {"permission": permission})
+
+
 class IsAdminOrReadOnly(BasePermission):
     """Any signed-in user can read; only admins can write."""
 
