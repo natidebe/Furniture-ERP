@@ -1,8 +1,12 @@
 from django.db import transaction
 
 from apps.audit.services import audit_log
+from apps.core.exceptions import BusinessRuleError
 
 from .models import Location
+
+# Created by the inventory migrations; transfers depend on it.
+SYSTEM_LOCATION_CODE = "TRANSIT"
 
 _AUDITED_FIELDS = ("code", "name", "type", "parent_id", "can_sell", "can_release", "is_active")
 
@@ -21,6 +25,9 @@ def create_location(*, user, **fields) -> Location:
 @transaction.atomic
 def update_location(*, user, location: Location, **fields) -> Location:
     location = Location.objects.select_for_update().get(pk=location.pk)
+    if location.code == SYSTEM_LOCATION_CODE:
+        raise BusinessRuleError("system_location",
+                                "In Transit is managed by the system and cannot be edited.")
     before = _snapshot(location)
     for name, value in fields.items():
         setattr(location, name, value)
