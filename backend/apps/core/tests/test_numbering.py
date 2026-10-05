@@ -48,16 +48,15 @@ def test_rolled_back_number_is_reused(monkeypatch):
         assert next_number("SO") == "SO-2026-00001"
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_requires_transaction():
     with pytest.raises(RuntimeError):
         next_number("SO")
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.skipif(connection.vendor != "postgresql", reason="needs Postgres row locks")
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_parallel_callers_get_unique_numbers():
-    if connection.vendor != "postgresql":
-        pytest.skip("needs Postgres row locks")
 
     results, errors = [], []
     barrier = threading.Barrier(10)

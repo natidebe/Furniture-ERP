@@ -56,3 +56,14 @@ class ProductFactory(factory.django.DjangoModelFactory):
     category = factory.SubFactory(CategoryFactory)
     unit = factory.SubFactory(UnitFactory)
     selling_price = Decimal("2500.00")
+
+
+class CustomerFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = "customers.Customer"
+
+    name = factory.Sequence(lambda n: f"Customer {n}")
+    shop_name = factory.Sequence(lambda n: f"Shop {n}")
+    phone = factory.Sequence(lambda n: f"09{n:08d}")
+    city = "Addis Ababa"
+    type = "reseller"
