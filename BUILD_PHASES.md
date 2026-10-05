@@ -25,9 +25,10 @@ How to use this file:
 | D7 | **Company total stock includes goods in transit**, shown as its own column, so transfers never make stock disappear from the total. | "Stock Management" |
 | D8 | **No company delivery.** Goods leave either to a branch (transfer) or to the customer at pickup. | "Out-of-City Orders" |
 | D9 | **Salespeople see only their own sales and orders.** | Salesperson "View their own sales" |
+| D10 | **New sales and payments are entered on a web page**; the bot does notifications, stock requests and releases, search and quick views. The web frontend is built later, outside this plan (Q17). | Q17 answer |
 
 **Scope notes**
-- **No web interface in the plan:** this plan builds the backend API and the Telegram bot. The client's main goal is that staff enter transactions *in the bot*, but Phase 4 sends "New Sale" to a web page, and no web page is planned. Either the bot gets full sale and payment entry, or a web frontend is added to the scope and timeline. See question Q17 in 1.9.
+- **Web frontend (Q17, decided 5 Oct 2026):** new sales and payments are entered on a **web page**, not in the bot. The web frontend is a separate piece of work, built later on top of this API; it is not in the 12-week backend timeline. Until it exists, staff use the API (Swagger) or the Django admin for testing only. The bot covers notifications, stock requests and releases, search and quick views.
 - **Cost price:** if the client later wants cost or profit, it is a scope change (D1).
 
 ---
@@ -329,7 +330,7 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 - [ ] **Q14.** Can an **official-receipt** order also receive Personal-account payments? D3 assumes no, and that the 100,000 ETB example is a no-receipt order. Is the receipt issued once per sale or once per payment?
 - [ ] **Q15.** Do resellers pay the same selling price as walk-in customers, or is there a wholesale price?
 - [ ] **Q16.** Does a stock request need someone's approval before the Pawlos storekeeper may release it ("approved/requested transaction"), or is a salesperson's request enough?
-- [ ] **Q17.** Must all daily work be done in Telegram, including new sales and payments? Or is a web screen acceptable for that, and who builds it? (Scope note)
+- [x] **Q17.** Must all daily work be done in Telegram, including new sales and payments? **Answer: no. Sales and payments are entered on a web page, built later (D10).**
 - [ ] **Q18.** Low-stock alert: is `min_stock` for the company total or per location? Should the stock report show the Piassa underground store as its own column?
 - [ ] **Q19.** Transaction number format: the client's example uses `PS-2026-00125`. What does `PS` mean, and should sales use it instead of `SO`?
 - [ ] **Q20.** How should a customer payment with no order chosen be applied: to the oldest unpaid order first, or kept as an advance until the accountant allocates it?
@@ -895,7 +896,7 @@ bot/
 - [ ] `/start <code>` → `POST /api/v1/auth/telegram/link/` with the code and the Telegram ID. Unknown Telegram IDs get only a "please link your account" message.
 - [ ] Main menus (from `GET /auth/me/` role):
   - Salesperson: New Sale · Request Stock · Check Stock · Customers · Credit · My Orders · My Sales
-    - **New Sale** and recording a payment: built as full step-by-step bot flows if Q17 says all daily work happens in Telegram. Otherwise they open a web page, and the web frontend must be in scope.
+    - **New Sale** and recording a payment open the web page (D10). Until the web frontend exists, the button explains that sales are entered on the web.
   - Storekeeper: Stock Requests · Pawlos Stock · Release Stock · Stock History
   - Accountant: Sales · Payments · Credit · Stock · Reports · Export Excel
   - Admin: all of the above
