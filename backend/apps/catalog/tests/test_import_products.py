@@ -69,3 +69,71 @@ def test_any_bad_row_aborts_whole_import(tmp_path):
 
     assert "row 3" in str(exc.value) and "row 4" in str(exc.value)
     assert not Product.objects.exists()
+
+
+@pytest.mark.django_db
+def test_optional_min_stock_and_description(tmp_path):
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Code", "Name", "Category", "Unit", "Price", "Min stock", "Description"])
+    ws.append(["VC-001", "Visitor chair", "Visitor chairs", "pcs", 2500, 10, "Black mesh"])
+    path = tmp_path / "products.xlsx"
+    wb.save(path)
+
+    call_command("import_products", str(path))
+
+    product = Product.objects.get(code="VC-001")
+    assert (product.min_stock, product.description) == (10, "Black mesh")
+
+
+@pytest.mark.django_db
+def test_category_matched_case_insensitively(tmp_path):
+    from apps.catalog.models import Category
+
+    before = Category.objects.count()
+    call_command("import_products",
+                 _xlsx(tmp_path, [["VC-001", "Visitor chair", "visitor CHAIRS", "pcs", 2500]]))
+
+    assert Category.objects.count() == before
+    assert Product.objects.get(code="VC-001").category.name == "Visitor chairs"
+
+
+@pytest.mark.django_db
+def test_duplicate_code_in_file_is_an_error(tmp_path):
+    path = _xlsx(tmp_path, [
+        ["VC-001", "Visitor chair", "Visitor chairs", "pcs", 2500],
+        ["vc-001", "Same code again", "Visitor chairs", "pcs", 2600],
+    ])
+
+    with pytest.raises(CommandError) as exc:
+        call_command("import_products", path)
+
+    assert "already on row 2" in str(exc.value)
+    assert not Product.objects.exists()
+
+
+@pytest.mark.django_db
+def test_template_has_headers_but_no_products(tmp_path):
+    """Examples live on the help sheet, so an unfilled template can't create fake products."""
+    path = str(tmp_path / "template.xlsx")
+
+    call_command("import_products", template=path)
+    call_command("import_products", path)
+
+    assert not Product.objects.exists()
+
+
+@pytest.mark.django_db
+def test_filled_template_imports(tmp_path):
+    from openpyxl import load_workbook
+
+    path = str(tmp_path / "template.xlsx")
+    call_command("import_products", template=path)
+    wb = load_workbook(path)
+    wb["Products"].append(["oc-001", "Office chair", "Office chairs", "pcs", 4200, 5, ""])
+    wb.save(path)
+
+    call_command("import_products", path)
+
+    product = Product.objects.get(code="OC-001")
+    assert (product.selling_price, product.min_stock) == (Decimal("4200.00"), 5)
