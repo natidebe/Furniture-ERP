@@ -1,15 +1,21 @@
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.core.views import health
 
+api_v1 = [
+    path("", include("apps.accounts.api.urls")),
+    path("", include("apps.locations.api.urls")),
+    path("", include("apps.catalog.api.urls")),
+    path("", include("apps.audit.api.urls")),
+]
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health, name="health"),
+    path("api/v1/", include(api_v1)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/schema/swagger-ui/", SpectacularSwaggerView.as_view(url_name="schema"),
          name="swagger-ui"),
-    # Add each app's API under api/v1/ as it is built, e.g.:
-    # path("api/v1/", include("apps.accounts.api.urls")),
 ]
