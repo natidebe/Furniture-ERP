@@ -10,11 +10,31 @@ How to use this file:
 - Work through the phases in order. Each task is a checkbox, so you can tick tasks off in GitHub or your editor.
 - Each phase lists **files to create**, **models**, **services**, **endpoints**, **tests** and a **definition of done**.
 - Code snippets are the reference shape. Adjust names, but keep the rules: stock and money are ledgers, every change goes through a service, and corrections are reversals.
+- The client's requirements are in `userequirements.md`. The decisions below settle where that text conflicts with itself or was open to more than one reading. Don't change them without the client.
+
+## Requirements decisions
+
+| # | Decision | Source in `userequirements.md` |
+| --- | --- | --- |
+| D1 | **No cost price, purchase price or profit anywhere.** The 5:43 PM message ("Do Not Record Product Cost") overrides the earlier "Cost price (admin/accountant only)". | "Payment and Pricing Requirements" |
+| D2 | **A sale and a payment are separate records.** A payment can cover part of an order, specific lines, or a customer's balance. | "Payment Must Be Recorded Separately" |
+| D3 | **Every payment names its account kind: Organization or Personal.** Official-receipt sales are paid only into Organization accounts, with a receipt number. Personal payments never carry a receipt number. One no-receipt order can mix both kinds (the 100,000 ETB example). | "Payment Types" A/B, "Payment Account", "Partial Payment" |
+| D4 | **One tracking number per transaction.** The sales order number (`SO-…`) is the master reference. Every delivery note, stock request, release, transfer, movement and payment tied to the order stores and shows it, and search finds the whole transaction from any of those numbers. | "Delivery Paper System", "Complete Transaction History" |
+| D5 | **Admins set permissions per user.** Roles give defaults; the admin adds or removes individual permissions. Accountants correct payments by default, but void or correct sales and stock only when an admin grants `correct_transactions`. | Admin "Set user permissions"; Accountant "Correct transactions when authorized" |
+| D6 | **Corrections never edit or delete.** A wrong confirmed sale is voided (stock and balance reversed) and re-issued with a link to the original. A wrong payment is reversed and re-recorded with a link. Each step is in the history. | "Complete Transaction History", "Important Permission" |
+| D7 | **Company total stock includes goods in transit**, shown as its own column, so transfers never make stock disappear from the total. | "Stock Management" |
+| D8 | **No company delivery.** Goods leave either to a branch (transfer) or to the customer at pickup. | "Out-of-City Orders" |
+| D9 | **Salespeople see only their own sales and orders.** | Salesperson "View their own sales" |
+
+**Scope notes**
+- **No web interface in the plan:** this plan builds the backend API and the Telegram bot. The client's main goal is that staff enter transactions *in the bot*, but Phase 4 sends "New Sale" to a web page, and no web page is planned. Either the bot gets full sale and payment entry, or a web frontend is added to the scope and timeline. See question Q17 in 1.9.
+- **Cost price:** if the client later wants cost or profit, it is a scope change (D1).
 
 ---
 
 ## Table of contents
 
+0. [Requirements decisions](#requirements-decisions)
 1. [Phase 1 — Foundation (Weeks 1–2)](#phase-1--foundation-weeks-12)
 2. [Phase 2 — Inventory & Stock Requests (Weeks 3–5)](#phase-2--inventory--stock-requests-weeks-35)
 3. [Phase 3 — Sales, Payments & Credit (Weeks 6–8)](#phase-3--sales-payments--credit-weeks-68)
@@ -191,13 +211,30 @@ IsSalesStaff = role_permission("salesperson", "accountant", "admin")
 IsStorekeeper = role_permission("storekeeper", "admin")
 ```
 
+- [x] **Per-user permissions (D5).** `ERPPermission` choices on the User model, stored as normal Django user permissions (`accounts.<codename>`). The admin role always has all of them. `erp_permission(ERPPermission.X)` gives the DRF permission class, and `user.has_erp_permission(...)` is the check for services. Later phases check these permissions, not role names, for:
+
+| Permission | Guards | Default roles |
+| --- | --- | --- |
+| `view_personal_payments` | Personal-account amounts, lists and report totals | accountant, admin |
+| `verify_payments` | verify / reject a payment | accountant, admin |
+| `correct_payments` | reverse a payment and re-record it | accountant, admin |
+| `correct_transactions` | void / correct a sale; reverse a stock movement | admin (grant per accountant) |
+| `approve_adjustments` | approve / reject stock adjustments | accountant, admin |
+| `approve_credit` | confirm a sale beyond the customer's credit rules | accountant, admin |
+| `approve_discounts` | discounts above `MAX_SALESPERSON_DISCOUNT_PCT` | accountant, admin |
+| `export_reports` | Excel exports | accountant, admin |
+
+  - Defaults are applied when a user is created and reset when their role changes. After that, the admin sets the exact list per user. Every change is audited.
+  - Roles still decide *which screens and records* a user reaches (for example, a storekeeper only releases from their own warehouse). Permissions decide the sensitive *actions*.
+
 - [x] `TelegramLinkToken` model: `user`, `token` (8 characters, unique), `expires_at` (now + 10 minutes), `used_at`.
 - [x] django-axes configured: lock out after 5 failed logins for 30 minutes.
 - [x] Endpoints:
   - `POST /api/v1/auth/token/` and `POST /api/v1/auth/refresh/` (simplejwt; access 15 min, refresh 7 days, rotation on)
-  - `GET /api/v1/auth/me/` → id, name, role, home_location, permissions list
+  - `GET /api/v1/auth/me/` → id, name, role, home_location, effective permissions list
   - `POST /api/v1/auth/telegram/link-code/` → creates a one-time code for the current user
-  - `GET/POST/PATCH /api/v1/users/` → admin only
+  - `GET/POST/PATCH /api/v1/users/` → admin only; includes `permissions` (omit to get the role's defaults)
+  - `GET /api/v1/permissions/` → the grantable permissions with their labels and default roles
 
 ### 1.4 `locations` app
 
@@ -218,7 +255,8 @@ IsStorekeeper = role_permission("storekeeper", "admin")
 - [x] `Category(ActiveModel)`: `name`, `parent` (FK self, nullable).
 - [x] `Unit(models.Model)`: `name`, `symbol` (seed: pcs, set).
 - [x] `Product(ActiveModel)`: `code` (unique, upper-cased on save, e.g. `VC-001`), `name`, `category` FK, `unit` FK, `selling_price` (Decimal 14,2), `min_stock` (int, default 0), `description` (optional).
-  - **Do not add** cost, purchase price or profit fields.
+  - **Do not add** cost, purchase price or profit fields (D1 — the client's 5:43 PM message).
+  - `min_stock` is set by the admin and drives the low-stock alert (4.4).
 - [x] `PriceHistory`: `product`, `old_price`, `new_price`, `changed_by`, `changed_at`, `reason`.
 - [x] Service `apps/catalog/services.py`:
 
@@ -250,7 +288,8 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 - [x] `AuditLog`: `actor` FK, `action` (string), `model` (string), `object_id` (string), `before` (JSON), `after` (JSON), `reason`, `source` (`web` / `bot` / `system`), `ip`, `at` (auto, indexed).
 - [x] Helper `apps/audit/services.py::audit_log(actor, action, obj, before=None, after=None, reason="", source="web")`.
 - [x] Middleware `apps/audit/middleware.py` that stores the request IP and source (`X-Client: bot` header → `bot`) in a context variable for `audit_log` to read.
-- [x] Register `simple_history` on Product, Customer, PaymentAccount, Location and User for field-level history.
+- [x] Register `simple_history` on Product, Location and User for field-level history.
+- [ ] Register it on Customer (Phase 2.1) and PaymentAccount (Phase 3.3) when those models are created.
 - [x] Endpoint `GET /api/v1/audit/?model=&object_id=&actor=&from=&to=` → accountant (read) and admin.
 - [x] The AuditLog admin is read-only: no add, change or delete.
 
@@ -262,6 +301,8 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 - [x] `change_price` writes PriceHistory and AuditLog.
 - [x] A salesperson gets 403 on product create, change-price and users.
 - [x] Login lockout after 5 bad passwords.
+- [x] New users get their role's default permissions; a role change resets them; the admin can grant and remove single permissions, and each change is audited.
+- [x] An accountant can correct payments by default but not sales or stock (`correct_transactions`) until granted; a deactivated user has no permissions.
 
 ### 1.8 Definition of done
 
@@ -272,19 +313,26 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 
 ### 1.9 Open questions to settle before the gate
 
-- [ ] How does imported stock arrive — always into Pawlos? Who records it?
-- [ ] Opening balances: full stock count per location? Outstanding customer balances today?
-- [ ] Does Denbel request from Pawlos the same way? Piassa ↔ Denbel transfers?
-- [ ] Is the Piassa underground store tracked separately from Piassa?
-- [ ] Do out-of-city and reseller customers collect goods at Pawlos directly?
-- [ ] Can salespeople give discounts, and up to what limit?
-- [ ] How are returns and damaged goods handled today?
-- [ ] Which payment accounts exist, and which are Organization vs Personal?
-- [ ] Who may see Personal-account totals and reports?
-- [ ] VAT or price-with-tax fields needed on official-receipt delivery notes?
-- [ ] Credit limits per customer, and who approves exceeding them?
-- [ ] Ethiopian calendar and Amharic needed — on screens, documents, or both?
-- [ ] Should a printed delivery note still go to the customer, and in what layout?
+- [ ] **Q1.** How does imported stock arrive — always into Pawlos? Who records it?
+- [ ] **Q2.** Opening balances: full stock count per location? Outstanding customer balances today?
+- [ ] **Q3.** Does Denbel request from Pawlos the same way? Piassa ↔ Denbel transfers?
+- [ ] **Q4.** Is the Piassa underground store tracked separately from Piassa?
+- [ ] **Q5.** Do out-of-city and reseller customers collect goods at Pawlos directly?
+- [ ] **Q6.** Can salespeople give discounts, and up to what limit?
+- [ ] **Q7.** How are returns and damaged goods handled today?
+- [ ] **Q8.** Which payment accounts exist, and which are Organization vs Personal?
+- [ ] **Q9.** Who may see Personal-account totals and reports?
+- [ ] **Q10.** VAT or price-with-tax fields needed on official-receipt delivery notes?
+- [ ] **Q11.** Credit limits per customer, and who approves exceeding them?
+- [ ] **Q12.** Ethiopian calendar and Amharic needed — on screens, documents, or both?
+- [ ] **Q13.** Should a printed delivery note still go to the customer, and in what layout?
+- [ ] **Q14.** Can an **official-receipt** order also receive Personal-account payments? D3 assumes no, and that the 100,000 ETB example is a no-receipt order. Is the receipt issued once per sale or once per payment?
+- [ ] **Q15.** Do resellers pay the same selling price as walk-in customers, or is there a wholesale price?
+- [ ] **Q16.** Does a stock request need someone's approval before the Pawlos storekeeper may release it ("approved/requested transaction"), or is a salesperson's request enough?
+- [ ] **Q17.** Must all daily work be done in Telegram, including new sales and payments? Or is a web screen acceptable for that, and who builds it? (Scope note)
+- [ ] **Q18.** Low-stock alert: is `min_stock` for the company total or per location? Should the stock report show the Piassa underground store as its own column?
+- [ ] **Q19.** Transaction number format: the client's example uses `PS-2026-00125`. What does `PS` mean, and should sales use it instead of `SO`?
+- [ ] **Q20.** How should a customer payment with no order chosen be applied: to the oldest unpaid order first, or kept as an advance until the accountant allocates it?
 
 ---
 
@@ -296,7 +344,7 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 
 ### 2.1 `inventory` app — models
 
-- [ ] First create the `Customer` model (fields in 3.1) and the "Walk-in Customer" data migration in the `customers` app. Stock movements and stock requests reference customers, so the model must exist now. Customer endpoints and selectors stay in Phase 3.
+- [ ] First create the `Customer` model (fields in 3.1) and the "Walk-in Customer" data migration in the `customers` app. Stock movements and stock requests reference customers, so the model must exist now. Register `simple_history` on it. Customer endpoints and selectors stay in Phase 3.
 - [ ] `StockMovement` — **immutable**, never updated or deleted:
 
 ```python
@@ -321,6 +369,9 @@ class StockMovement(models.Model):
     type = models.CharField(max_length=20, choices=MovementType.choices)
     reference_type = models.CharField(max_length=30)   # "sales_order", "stock_release", ...
     reference_id = models.CharField(max_length=40)
+    # D4: the master transaction number (the sales order's SO-…), or the SR-… number for a
+    # branch restock with no order. Indexed so one search finds every movement of a transaction.
+    transaction_number = models.CharField(max_length=20, blank=True, db_index=True)
     customer = models.ForeignKey("customers.Customer", null=True, blank=True,
                                  on_delete=models.PROTECT)
     person = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -339,7 +390,7 @@ class StockMovement(models.Model):
 ```
 
 - [ ] `StockBalance`: `product`, `location`, `on_hand` (int ≥ 0), `reserved` (int ≥ 0), `updated_at`; `unique_together (product, location)`; DB `CheckConstraint`s for `on_hand >= 0`, `reserved >= 0` and `reserved <= on_hand`.
-- [ ] Add an **In Transit** virtual location (`code="TRANSIT"`, type `warehouse`, `can_sell=False`) by data migration, so transfers have a place to sit between out and in.
+- [ ] Add an **In Transit** virtual location (`code="TRANSIT"`, type `warehouse`, `can_sell=False`) by data migration, so transfers have a place to sit between out and in. Company totals always include it (D7).
 - [ ] `GoodsReceipt` + `GoodsReceiptLine`: `number` (GR-…), `location` (default Pawlos), `reference` (shipment / container / invoice no.), `received_at`, `note`; lines: `product`, `qty`.
 - [ ] `StockAdjustment`: `number` (ADJ-…), `location`, `product`, `qty_delta` (signed int), `reason` (`count` / `damage` / `loss` / `found`), `status` (`proposed` / `approved` / `rejected`), `proposed_by`, `approved_by`, `approved_at`.
 - [ ] `StockTransfer` + `StockTransferLine`: `number` (TR-…), `from_location`, `to_location`, `status` (`in_transit` / `received` / `cancelled`), `sent_by`, `received_by`, `received_at`, `stock_request` (FK, nullable).
@@ -359,6 +410,7 @@ def _lock_balance(product, location) -> StockBalance:
 @transaction.atomic
 def post_movement(*, product, qty, type, from_location=None, to_location=None,
                   reference_type, reference_id, person, customer=None, note="",
+                  transaction_number="",
                   reverses=None, allow_reserved=False) -> StockMovement:
     if qty <= 0:
         raise BusinessRuleError("invalid_qty", "Quantity must be positive.")
@@ -384,6 +436,7 @@ def post_movement(*, product, qty, type, from_location=None, to_location=None,
         number=next_number("MV"), product=product, qty=qty, type=type,
         from_location=from_location, to_location=to_location,
         reference_type=reference_type, reference_id=str(reference_id),
+        transaction_number=transaction_number,
         person=person, customer=customer, note=note, reverses=reverses)
 
     transaction.on_commit(lambda: check_low_stock.delay(product.id))  # stub until Phase 4
@@ -418,6 +471,7 @@ def reverse_movement(*, movement, person, reason) -> StockMovement:
 ```
 
 - [ ] `apps/inventory/tasks.py::check_low_stock(product_id)`: a Celery task that does nothing for now. Phase 4.4 fills it in.
+- [ ] `reverse_movement` is a correction: callers must hold `correct_transactions` (D5, D6). It copies `transaction_number` from the original movement and writes an audit entry with the reason.
 - [ ] `receive_goods(location, reference, lines, user)` → creates a GoodsReceipt and one `receipt` movement per line (outside → Pawlos).
 - [ ] `propose_adjustment(...)` and `approve_adjustment(adjustment, user)`; approval posts an `adjustment` movement (negative delta = from location, positive = to location).
 - [ ] `send_transfer(from, to, lines, user, stock_request=None)` → `transfer_out` movements (from → TRANSIT), status `in_transit`.
@@ -427,7 +481,7 @@ def reverse_movement(*, movement, person, reason) -> StockMovement:
 ### 2.3 `requests` app — Pawlos stock requests
 
 - [ ] Models:
-  - `StockRequest`: `number` (SR-…), `requesting_location`, `source_location` (default Pawlos), `order` (FK → SalesOrder, nullable; the field is added by a Phase 3 migration once SalesOrder exists), `customer` (nullable), `salesperson`, `status`, `notes`, `acknowledged_by`, `acknowledged_at`.
+  - `StockRequest`: `number` (SR-…), `requesting_location`, `source_location` (default Pawlos), `order` (FK → SalesOrder, nullable; the field is added by a Phase 3 migration once SalesOrder exists), `transaction_number` (the order's SO-… number, or the request's own SR-… number when there is no order — D4), `customer` (nullable), `salesperson`, `status`, `notes`, `acknowledged_by`, `acknowledged_at`.
   - `StockRequestLine`: `request`, `product`, `qty_requested`, `qty_released` (default 0).
   - `StockRelease`: `number` (SRL-…), `request`, `released_by`, `released_at`, `destination_type` (`branch` / `customer_pickup`), `note`.
   - `StockReleaseLine`: `release`, `product`, `qty`.
@@ -490,6 +544,8 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
     return release
 ```
 
+  - Every movement and transfer that `release_stock` posts carries the request's `transaction_number`.
+  - If the client answers Q16 with "requests need approval", add an `approved` state between `pending` and `acknowledged`, guarded by a new permission. The rule "no release without a request" holds either way.
   - `reject_request(request, storekeeper, reason)` → releases reservations.
   - `cancel_request(request, user, reason)` → salesperson (own, before any release) or admin; releases reservations.
 - [ ] **Rule enforcement:** there is no endpoint that lets a storekeeper move stock without a `request_id`. Storekeepers have no access to `adjustments/approve`, `transfers` create, or `post_movement` directly.
@@ -499,12 +555,13 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 | Method & path | Who | Notes |
 | --- | --- | --- |
 | `GET /api/v1/stock/?location=&product=&category=&low=true` | all | Balances with `available = on_hand − reserved` |
-| `GET /api/v1/stock/summary/` | all | Product × location matrix with total column |
+| `GET /api/v1/stock/summary/` | all | Product × location matrix: one column per location (Piassa, Underground per Q18, Denbel, Pawlos), **In transit**, and **Total** = all of them (D7) |
 | `GET /api/v1/products/{id}/stock/` | all | One product across locations (used by the bot's `VC-001` lookup) |
-| `GET /api/v1/stock/movements/?product=&location=&type=&from=&to=` | storekeeper (own), accountant, admin | Movement history |
+| `GET /api/v1/stock/movements/?product=&location=&type=&transaction=&from=&to=` | storekeeper (own), accountant, admin | Movement history; `transaction` matches `transaction_number` |
+| `POST /api/v1/stock/movements/{id}/reverse/` | `correct_transactions` | Body: `{"reason": "..."}`; reason required |
 | `POST /api/v1/goods-receipts/` | storekeeper (Pawlos), accountant, admin | |
 | `POST /api/v1/adjustments/` | storekeeper (propose), accountant, admin | |
-| `POST /api/v1/adjustments/{id}/approve/` · `/reject/` | accountant, admin | |
+| `POST /api/v1/adjustments/{id}/approve/` · `/reject/` | `approve_adjustments` | |
 | `POST /api/v1/transfers/` | admin, accountant | Transfers not tied to a request |
 | `POST /api/v1/transfers/{id}/receive/` | branch staff of destination, admin | |
 | `GET/POST /api/v1/stock-requests/` | salesperson (own branch), storekeeper (own warehouse), accountant (read), admin | |
@@ -523,13 +580,16 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 - [ ] Storekeeper from another location cannot release.
 - [ ] Transfer out + in leaves TRANSIT at zero and destination increased.
 - [ ] `reverse_movement` restores balances and cannot be applied twice.
+- [ ] Reversing a movement or approving an adjustment without the permission returns 403, even for an accountant.
+- [ ] Stock summary: Total = sum of every location column + In transit; a sent-but-not-received transfer leaves Total unchanged.
+- [ ] Every movement from a request release carries the request's `transaction_number`.
 - [ ] **Property test:** after a random sequence of 200 operations, every `StockBalance.on_hand` equals the sum of its movements (`rebuild_stock_balances --check` reports zero mismatches).
 - [ ] StockMovement `save()` on an existing row and `delete()` both raise.
 
 ### 2.6 Definition of done
 
 - [ ] Goods receipt, transfer, adjustment and request → release all work on staging through Swagger.
-- [ ] The stock summary endpoint returns the Piassa / Underground / Denbel / Pawlos / Total matrix.
+- [ ] The stock summary endpoint returns the Piassa / (Underground) / Denbel / Pawlos / In transit / Total matrix.
 - [ ] `rebuild_stock_balances --check` reports no mismatch on staging.
 - [ ] Client demo: storekeeper releases a partial request; the client signs the gate.
 
@@ -550,37 +610,52 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 - [ ] Selectors `apps/customers/selectors.py`:
   - `customer_balance(customer)` → `{"total_purchases", "total_paid", "outstanding", "advance"}`
   - `customer_statement(customer, date_from, date_to)` → chronological rows (order = debit, payment = credit) with a running balance
-- [ ] Endpoints: `GET/POST/PATCH /api/v1/customers/`, `GET /customers/{id}/balance/`, `GET /customers/{id}/statement/`. Only accountant and admin can change `credit_allowed` and `credit_limit` (serializer makes them read-only for salespeople).
+- [ ] Endpoints: `GET/POST/PATCH /api/v1/customers/?search=&type=&city=` (search over name, phone, shop name), `GET /customers/{id}/balance/`, `GET /customers/{id}/statement/`. Salespeople can create customers. Only users with `approve_credit` can change `credit_allowed` and `credit_limit`; the serializer makes those fields read-only for everyone else.
+- [ ] The statement shows every payment with its date and account kind (Organization / Personal), as the client's "ABC Furniture" example asks. Personal amounts follow the `view_personal_payments` rule in 3.3.
 
 ### 3.2 `sales` app — orders and delivery notes
 
 - [ ] `SalesOrder(TimeStampedModel)`:
-  - `number` (SO-…), `customer`, `branch` (Location), `salesperson`, `channel` (`walk_in` / `phone`)
-  - `fulfillment_status`: `draft` → `pending` → `confirmed` → `prepared` → `released` → `completed`, or `cancelled`
+  - `number` (SO-…): **the master transaction number (D4)**. It is printed on the delivery note and stored as `transaction_number` on every related request, release, transfer and movement.
+  - `customer`, `branch` (Location), `salesperson`, `channel` (`walk_in` / `phone`)
+  - `fulfillment_status`: `draft` → `pending` → `confirmed` → `prepared` → `released` → `completed`, or `cancelled` (before any release) or `voided` (a correction after release, D6). Phone orders follow the client's Pending → Confirmed → Prepared → Released.
   - `payment_status`: `unpaid` / `partial` / `paid` (computed and cached by the payment service)
-  - `receipt_type`: `official` / `none`
+  - `receipt_type`: `official` / `none`. This is the "payment type" the salesperson picks at the sale (official receipt vs without receipt). "Credit" is whatever stays unpaid after confirmation.
   - `total_amount` (Decimal, computed from lines on save), `notes`, `confirmed_at`, `cancelled_reason`
+  - `replaces` (FK self, nullable): the voided order this one corrects; `voided_by`, `voided_at`, `void_reason`
 - [ ] `SalesOrderLine`: `order`, `product`, `qty`, `unit_price` (snapshot copied from product at creation), `discount` (Decimal, default 0), `line_total` (= qty × unit_price − discount), `source_location`, `qty_released` (default 0).
 - [ ] `DeliveryNote`: `number` (DN-…), `order`, `location`, `issued_by`, `issued_at`; `DeliveryNoteLine`: `product`, `qty`.
 - [ ] Services `apps/sales/services.py`:
-  - `create_order(customer, branch, lines, salesperson, channel, receipt_type, notes)` → status `draft` (walk-in) or `pending` (phone). Unit prices always come from the product, never from the request body.
+  - `create_order(customer, branch, lines, salesperson, channel, receipt_type, notes, payment=None, replaces=None)` → status `draft` (walk-in) or `pending` (phone). Unit prices always come from the product, never from the request body. An optional `payment` (same fields as `record_payment`) is recorded in the same transaction, so a walk-in sale with immediate payment is one step.
   - `update_draft_order(order, lines, user)` → only while `draft` / `pending`.
   - `confirm_order(order, user)`:
     1. For each line where `source_location` is the branch: post a `sale` movement (branch → customer) and add it to a new DeliveryNote.
     2. For lines sourced from Pawlos: `create_stock_request(...)` linked to the order.
-    3. Credit check: if the order will have an unpaid balance and `credit_allowed` is false, or the new outstanding exceeds `credit_limit`, raise `credit_not_allowed` unless the user is accountant or admin.
+    3. Credit check: if the order will have an unpaid balance and `credit_allowed` is false, or the new outstanding exceeds `credit_limit`, raise `credit_not_allowed` unless the user has `approve_credit`.
     4. Set status `confirmed`, or `completed` if every line was released at the branch.
   - `release_from_branch(order, lines, user)` → after a transfer is received, sell the remaining lines from the branch and issue a DeliveryNote.
   - `mark_prepared(order, user)` / `mark_released(order, user)` → used for phone orders picked up at Pawlos (released automatically when the stock release has destination `customer_pickup`).
   - `cancel_order(order, user, reason)` → only before any release; cancels open stock requests and releases reservations.
   - `return_goods(order, lines, location, user, reason)` → `return` movements (customer → location) and reduces the order total through a negative adjustment line, so the customer balance updates.
-- [ ] Discount rule: salesperson discounts above a configurable limit (setting `MAX_SALESPERSON_DISCOUNT_PCT`, default 0 until the client answers) require accountant or admin.
-- [ ] Delivery note PDF: `apps/sales/pdf.py` renders `apps/sales/templates/sales/delivery_note.html` with WeasyPrint. Layout: company header, DN number, order number, date, customer, table (code, product, qty, unit price, total), payment summary, three signature lines (salesperson, storekeeper, customer).
+  - `void_order(order, user, reason)` → **correction of a wrong released sale (D6)**; requires `correct_transactions` and a reason. In one transaction it:
+    1. reverses every stock movement of the order (`reverse_movement`), and cancels open requests and reservations;
+    2. deactivates the order's payment allocations, so that money becomes the customer's advance (the payments themselves stay valid);
+    3. sets `voided`, which takes the order out of sales totals and the customer balance;
+    4. writes an audit entry.
+
+    The corrected sale is then created with `create_order(..., replaces=voided_order)`, and the advance is allocated to it. Both orders show the link in their history.
+- [ ] Discount rule: salesperson discounts above a configurable limit (setting `MAX_SALESPERSON_DISCOUNT_PCT`, default 0 until the client answers) require `approve_discounts`.
+- [ ] Wholesale/reseller prices: none until Q15 is answered. If the client wants them, add a price list per customer type; `unit_price` still comes from the server, never the request.
+- [ ] Delivery note PDF: `apps/sales/pdf.py` renders `apps/sales/templates/sales/delivery_note.html` with WeasyPrint. Layout: company header, **order (transaction) number** in large type, DN number, date, customer, table (code, product, qty, unit price, total), payment summary, three signature lines (salesperson, storekeeper, customer).
 
 ### 3.3 `payments` app
 
-- [ ] `PaymentAccount(ActiveModel)`: `name`, `kind` (`organization` / `personal`), `method` (`bank` / `cash` / `mobile_money`), `bank_name`, `account_number`, `owner_name`.
-- [ ] `Payment(TimeStampedModel)`: `number` (PAY-…), `customer`, `account`, `amount`, `method`, `receipt_number` (nullable), `paid_at`, `recorded_by`, `status` (`unverified` / `verified` / `rejected` / `reversed`), `verified_by`, `verified_at`, `reversal_reason`, `note`.
+- [ ] `PaymentAccount(ActiveModel)`: `name`, `kind` (`organization` / `personal`), `method` (`bank` / `cash` / `mobile_money`), `bank_name`, `account_number`, `owner_name`. Register `simple_history` on it.
+- [ ] `Payment(TimeStampedModel)`: `number` (PAY-…), `customer`, `account`, `amount`, `method`, `receipt_number` (nullable, indexed for search), `paid_at`, `recorded_by`, `status` (`unverified` / `verified` / `rejected` / `reversed`), `verified_by`, `verified_at`, `reversal_reason`, `replaces` (FK self, nullable: the reversed payment this one corrects), `note`.
+- [ ] Payment account rules (D3):
+  - An **official-receipt** order accepts allocations only from **Organization** payments, and those need a `receipt_number`.
+  - A **Personal** payment never has a `receipt_number`.
+  - A no-receipt order accepts both kinds, as in the 100,000 ETB example. Revisit if Q14 says otherwise.
 - [ ] `PaymentAllocation`: `payment`, `order`, `order_line` (nullable), `amount`, `is_active` (False after reversal).
 - [ ] Services `apps/payments/services.py`:
 
@@ -595,6 +670,9 @@ def record_payment(*, customer, account, amount, method, paid_at, recorded_by,
     if (recorded_by.role == "salesperson"
             and not recorded_by.allowed_payment_accounts.filter(pk=account.pk).exists()):
         raise BusinessRuleError("account_not_allowed", "You cannot record to this account.")
+    if account.kind == "personal" and receipt_number:
+        raise BusinessRuleError("receipt_on_personal",
+                                "Personal-account payments do not carry a receipt number.")
 
     total_alloc = sum(Decimal(a["amount"]) for a in allocations)
     if total_alloc > amount:
@@ -604,7 +682,7 @@ def record_payment(*, customer, account, amount, method, paid_at, recorded_by,
         number=next_number("PAY"), customer=customer, account=account, amount=amount,
         method=method, receipt_number=receipt_number, paid_at=paid_at,
         recorded_by=recorded_by, note=note,
-        status="verified" if recorded_by.role in ("accountant", "admin") else "unverified")
+        status="verified" if recorded_by.has_erp_permission("verify_payments") else "unverified")
 
     for a in allocations:          # {"order_id": .., "line_id": None | .., "amount": ..}
         _allocate(payment=payment, **a)
@@ -626,41 +704,70 @@ def _allocate(*, payment, order_id, amount, line_id=None):
                                     f"{line.product.code}: remaining is {line_remaining(line)}.")
     if amount > order_remaining(order):
         raise BusinessRuleError("over_order_balance", f"Order remaining is {order_remaining(order)}.")
-    if order.receipt_type == "official" and payment.account.kind == "organization" \
-            and not payment.receipt_number:
-        raise BusinessRuleError("receipt_required", "Official sales need a receipt number.")
+    if order.fulfillment_status in ("draft", "cancelled", "voided"):
+        raise BusinessRuleError("order_not_payable", f"{order.number} cannot take payments.")
+    if order.receipt_type == "official":
+        if payment.account.kind != "organization":
+            raise BusinessRuleError("official_needs_organization",
+                                    "Official-receipt sales are paid only into an Organization account.")
+        if not payment.receipt_number:
+            raise BusinessRuleError("receipt_required", "Official sales need a receipt number.")
     PaymentAllocation.objects.create(payment=payment, order=order, order_line_id=line_id,
                                      amount=amount)
     refresh_payment_status(order)
 ```
 
   - `allocate_payment(payment, allocations, user)` → allocate leftover (advance) money later.
-  - `verify_payment(payment, user)` / `reject_payment(payment, user, reason)` → accountant / admin; rejected payments deactivate their allocations.
-  - `reverse_payment(payment, user, reason)` → status `reversed`, allocations `is_active=False`, refresh order statuses, audit log. Never delete.
+  - `allocate_oldest_first(payment, user)` → spreads a customer-level payment over that customer's open orders, oldest first; any rest stays an advance. Whether this runs automatically for payments recorded without an order depends on Q20. Until then it is a button the accountant presses.
+  - `verify_payment(payment, user)` / `reject_payment(payment, user, reason)` → `verify_payments`; rejected payments deactivate their allocations.
+  - `reverse_payment(payment, user, reason)` → `correct_payments`; status `reversed`, allocations `is_active=False`, refresh order statuses, audit log. Never delete.
+  - `correct_payment(payment, user, reason, **corrected_fields)` → `correct_payments`; reverses the payment and records the corrected one with `replaces=payment` in the same transaction (D6). Use it for a wrong amount, account, date or receipt number.
+- [ ] Visibility: Personal-account payments (amounts, lists, totals) are shown only to users with `view_personal_payments` and to the salesperson who recorded them. Everyone else sees the payment's existence and status, without the amount or account.
+- [ ] Every payment's history shows who recorded it, the amount, the account, the date and time, and the related sale and customer, plus every verify, reject, reverse and correct step and who did it (the "Important Permission" requirement).
   - `refresh_payment_status(order)` → sets `unpaid` / `partial` / `paid` from active allocations.
 - [ ] Selectors: `order_paid(order)`, `order_remaining(order)`, `line_paid(line)`, `line_remaining(line)`, `payment_unallocated(payment)`.
 - [ ] Balance rules (put these in the code as docstrings):
   - Order paid = sum of active allocations (unverified included, flagged in the UI).
   - Order remaining = order total − order paid.
-  - Customer outstanding = sum of confirmed order totals − sum of non-reversed, non-rejected payments.
+  - Customer outstanding = sum of confirmed (not cancelled, not voided) order totals − sum of non-reversed, non-rejected payments.
   - Unallocated payment money = customer advance.
 - [ ] Data migration placeholder for payment accounts; real accounts are entered by the admin once the client lists them.
 
-### 3.4 Phase 3 endpoints
+### 3.4 Search and transaction history (`reports` app)
+
+The client asks that every transaction "remain searchable later" and that search be "very easy".
+
+- [ ] `apps/reports/search.py::search(q, user, filters)` → grouped results, each limited to what `user` may see:
+  - **products** by code or name: name, code, price, stock per location, total (the client's `VC-001` card). An exact code match comes first.
+  - **customers** by name, phone or shop name, with their outstanding balance
+  - **orders** by SO number; **delivery notes** by DN number; **stock requests** by SR number; **payments** by PAY number or receipt number
+  - filters: `salesperson`, `from`, `to`, `branch`
+- [ ] `apps/reports/history.py::transaction_history(number, user)` → takes *any* related number (SO, DN, SR, SRL, TR, MV, PAY) and resolves it to the master transaction. Returns:
+  - a header: customer, products and codes, quantities, salesperson, source, destination, payment summary, status
+  - a chronological event list: created, confirmed, requested, acknowledged, released, transferred, received, delivery note issued, payment recorded / verified / rejected / reversed / corrected, voided, re-issued. Each event shows who, when and the reason.
+
+  This is the client's "Transaction #…" example.
+
+### 3.5 Phase 3 endpoints
 
 | Method & path | Who | Notes |
 | --- | --- | --- |
-| `GET/POST /api/v1/orders/` | salesperson (own branch), accountant, admin | Filters: status, payment_status, customer, branch, salesperson, date |
+| `GET/POST /api/v1/orders/` | salesperson (own orders only, D9), accountant, admin | Filters: number, status, payment_status, customer, branch, salesperson, date |
 | `GET/PATCH /api/v1/orders/{id}/` | same | PATCH only while draft / pending |
-| `POST /api/v1/orders/{id}/confirm/` | salesperson, accountant, admin | |
+| `POST /api/v1/orders/{id}/confirm/` | salesperson, accountant, admin | Beyond credit rules needs `approve_credit` |
 | `POST /api/v1/orders/{id}/release-from-branch/` | salesperson (own branch), admin | |
 | `POST /api/v1/orders/{id}/status/` | storekeeper (prepared), sales staff | Body: `{"status": "prepared"}` |
 | `POST /api/v1/orders/{id}/cancel/` · `/return/` | owner before release / accountant, admin | |
+| `POST /api/v1/orders/{id}/void/` | `correct_transactions` | Body: `{"reason": "..."}`; re-issue with `POST /orders/` and `"replaces": <id>` |
+| `GET /api/v1/orders/{id}/history/` | same as order read | The transaction history (3.4) |
 | `GET /api/v1/orders/{id}/payments/` | sales staff | Payment history with account kind and recorder |
 | `GET /api/v1/orders/{id}/delivery-note.pdf` | sales staff, storekeeper | |
-| `GET/POST /api/v1/payments/` | salesperson (own), accountant, admin | Filters: account, account_kind, status, customer, salesperson, from, to |
-| `POST /api/v1/payments/{id}/allocate/` | accountant, admin | |
-| `POST /api/v1/payments/{id}/verify/` · `/reject/` · `/reverse/` | accountant, admin | |
+| `GET/POST /api/v1/payments/` | salesperson (own), accountant, admin | Filters: number, receipt_number, account, account_kind, status, customer, order, salesperson, branch, from, to. Personal amounts need `view_personal_payments` |
+| `POST /api/v1/payments/{id}/allocate/` · `/allocate-oldest-first/` | accountant, admin | |
+| `POST /api/v1/payments/{id}/verify/` · `/reject/` | `verify_payments` | |
+| `POST /api/v1/payments/{id}/reverse/` · `/correct/` | `correct_payments` | Reason required |
+| `GET /api/v1/search/?q=&salesperson=&branch=&from=&to=` | all staff | 3.4; results filtered by permissions |
+| `GET /api/v1/transactions/{number}/` | all staff (own only for salespeople) | 3.4; any related number |
 | `GET/POST/PATCH /api/v1/payment-accounts/` | read: staff; write: admin | Salespeople only see accounts they are allowed to use |
 
 Example `POST /api/v1/payments/` body:
@@ -699,7 +806,7 @@ Example `GET /api/v1/orders/125/payments/` response:
 }
 ```
 
-### 3.5 Phase 3 tests
+### 3.6 Phase 3 tests
 
 - [ ] **Client example:** order 100,000 → pay 40,000 Organization → pay 20,000 Personal → paid 60,000, remaining 40,000, status `partial`, two history rows with correct kinds.
 - [ ] **Per-item payment:** order with chairs 50,000 + desks 40,000 + cabinet 20,000 → pay 50,000 to the chairs line → chairs line paid, desks and cabinet unpaid, order remaining 60,000.
@@ -707,21 +814,33 @@ Example `GET /api/v1/orders/125/payments/` response:
 - [ ] Over-allocating a payment is refused; leftover becomes an advance and can be allocated later.
 - [ ] Salesperson cannot use an account outside `allowed_payment_accounts`.
 - [ ] Official-receipt order + Organization account without a receipt number is refused.
+- [ ] Official-receipt order + Personal account is refused (`official_needs_organization`).
+- [ ] A Personal payment with a receipt number is refused (`receipt_on_personal`).
+- [ ] A no-receipt order accepts both Organization and Personal payments (the client's example).
+- [ ] `correct_payment` leaves the old payment `reversed`, creates the new one with `replaces`, and the order balance reflects only the new one.
+- [ ] Verify, reject, reverse and correct without the matching permission return 403, even for an accountant whose permission was removed.
+- [ ] A user without `view_personal_payments` never sees Personal amounts in payment lists, order payment history, customer statements or search.
 - [ ] Reversing a payment restores the remaining balance and keeps the payment row.
 - [ ] Customer `credit_allowed=False` → salesperson cannot confirm an order with a balance; accountant can.
 - [ ] Credit limit exceeded → refused for salesperson.
 - [ ] Unit price is taken from the product even if the request body sends another price.
 - [ ] Price change after an order does not alter that order.
 - [ ] Cancel after release is refused; return goods updates stock and customer balance.
+- [ ] `void_order` restores stock at the original locations, removes the order from the customer balance, turns its allocations into advance, and needs `correct_transactions`. The re-issued order links to it, and the advance can be allocated to it.
+- [ ] A salesperson sees only their own orders and payments.
+- [ ] Search finds a transaction by product code, product name, customer name, customer phone, SO, DN, SR and PAY number, receipt number, salesperson and date.
+- [ ] `transaction_history` returns the same timeline from the SO, DN, SR, MV and PAY numbers of one transaction, including voids and corrections.
+- [ ] `allocate_oldest_first` pays the oldest open orders first and leaves the rest as advance.
 - [ ] Customer statement running balance equals `customer_balance().outstanding`.
 - [ ] Delivery note PDF renders and contains the DN number and all lines.
 
-### 3.6 Definition of done
+### 3.7 Definition of done
 
 - [ ] Full walk-in flow on staging: create → confirm → delivery note PDF → payment.
 - [ ] Full Pawlos flow: order → stock request → release → transfer received → branch release → payment.
 - [ ] Phone order flow with partial payments and credit balance.
-- [ ] Accountant verifies, rejects and reverses payments; audit log shows each action.
+- [ ] Accountant verifies, rejects, reverses and corrects payments; audit log and transaction history show each action.
+- [ ] Admin voids a wrong sale and re-issues it; stock, balance and history are correct.
 - [ ] Client runs the 100,000 ETB example themselves and signs the gate.
 
 ---
@@ -775,7 +894,8 @@ bot/
 - [ ] Authentication: the bot calls the API with a service token plus the Telegram user ID. A DRF authentication class `BotUserAuthentication` (`apps/accounts/authentication.py`) resolves the linked user, so **every bot action runs with that user's normal permissions**.
 - [ ] `/start <code>` → `POST /api/v1/auth/telegram/link/` with the code and the Telegram ID. Unknown Telegram IDs get only a "please link your account" message.
 - [ ] Main menus (from `GET /auth/me/` role):
-  - Salesperson: New Sale (deep link to web) · Request Stock · Check Stock · Customers · Credit · My Orders · My Sales
+  - Salesperson: New Sale · Request Stock · Check Stock · Customers · Credit · My Orders · My Sales
+    - **New Sale** and recording a payment: built as full step-by-step bot flows if Q17 says all daily work happens in Telegram. Otherwise they open a web page, and the web frontend must be in scope.
   - Storekeeper: Stock Requests · Pawlos Stock · Release Stock · Stock History
   - Accountant: Sales · Payments · Credit · Stock · Reports · Export Excel
   - Admin: all of the above
@@ -784,26 +904,35 @@ bot/
   2. **Release** → for each line, the bot asks for the quantity actually released (defaults to remaining; buttons for the full amount or typing a number).
   3. Then asks the destination: **[To branch] [Customer pickup]**.
   4. Shows a summary and **[Confirm]** → calls `POST /stock-requests/{id}/release/` → replies with the release number.
-- [ ] Product lookup: any message matching a product code or name → card with name, code, price, stock per location, total.
+- [ ] Search: any free-text message goes to `GET /search/` (3.4). A product code or name returns the card with name, code, price, stock per location (Piassa, Denbel, Pawlos, and Underground per Q18) and total. Customer, order, delivery, receipt and request numbers return their records, and a transaction number opens its history.
 - [ ] Bot outgoing sender used by the Celery task lives in `apps/notifications/telegram.py` (plain HTTPS calls to the Bot API), so the API and bot share message formats in one place: `apps/notifications/templates.py`.
 - [ ] Webhook secured with `secret_token`; add the `bot` service to `docker-compose.yml`.
 
 ### 4.3 `reports` app
 
-- [ ] `apps/reports/selectors.py` — one function per report, each taking a `filters` dict (`date_from`, `date_to`, `branch`, `salesperson`, `customer`, `account_kind`, `account`, `category`):
+- [ ] `apps/reports/selectors.py` — one function per report, each taking a `filters` dict (`date_from`, `date_to`, `branch`, `salesperson`, `customer`, `order`, `account_kind`, `account`, `category`):
   - `sales_report(filters, period)` → total sales, order count, paid vs credit, official vs no-receipt, by salesperson, by branch, products and quantities sold, best sellers; for yearly, a monthly breakdown.
-  - `payments_report(filters, period)` → totals for Organization, Personal, Combined per day / week / month / year, plus a payment list.
+  - `payments_report(filters, period)` → totals for Organization, Personal, Combined per day / week / month / year, plus a payment list. Filters: date, customer, salesperson, branch, order, account type (the client's list). For a payment, "salesperson" and "branch" mean the salesperson and branch of the order it is allocated to; an unallocated payment counts under the person who recorded it.
   - `credit_report(filters)` → outstanding per customer with ageing buckets (0–30, 31–60, 61–90, 90+ days) and credit collected in the period.
-  - `stock_report(filters)` → product × location matrix with total and low-stock flag.
+  - `stock_report(filters)` → product × location matrix (Piassa, Underground per Q18, Denbel, Pawlos, In transit, Total — D7) with a low-stock flag.
   - `movements_report(filters)` → every movement with reference and person.
   - `open_requests_report(filters)` and `unverified_payments_report(filters)`.
+- [ ] What each scheduled report contains (from the requirements):
+
+| Report | Contents |
+| --- | --- |
+| Daily | total sales, number of transactions, paid sales, credit sales, official-receipt sales, other (no-receipt) sales, by salesperson, by branch, products and quantities sold; money received by Organization / Personal |
+| Weekly | total sales, paid, credit, outstanding credit (all customers), by salesperson, by branch, best-selling products, stock movements |
+| Monthly | total sales, total paid, total credit, credit collected, outstanding customer balances, product quantities, by salesperson, by branch, stock movements |
+| Yearly | the monthly contents for the whole year, with a month-by-month breakdown |
+
 - [ ] Definitions to agree with the accountant and write into docstrings:
-  - "Sales" = confirmed order totals by confirmation date (cancelled excluded, returns subtracted).
+  - "Sales" = confirmed order totals by confirmation date (cancelled and voided excluded, returns subtracted).
   - "Paid sales" = allocations dated in the period; "credit" = sales − paid.
   - Week = Monday–Sunday in Africa/Addis_Ababa.
 - [ ] `apps/reports/excel.py` → one workbook per report, formatted headers, ETB number format, totals row, frozen header, auto column widths.
 - [ ] Endpoints: `GET /api/v1/reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?...` returning JSON; add `&format=xlsx` to download Excel.
-- [ ] Permission: salespeople get only their own sales summary; storekeepers get Pawlos stock and movements; Personal-account figures are hidden unless the user has the `view_personal_payments` permission.
+- [ ] Permission: salespeople get only their own sales summary; storekeepers get Pawlos stock and movements; Personal-account figures are hidden unless the user has `view_personal_payments`; `format=xlsx` needs `export_reports`.
 
 ### 4.4 Scheduled jobs (Celery beat)
 
@@ -812,10 +941,11 @@ The schedule goes in `app.conf.beat_schedule` in `config/celery.py`.
 | Task | Lives in | Schedule (Addis Ababa) | Action |
 | --- | --- | --- | --- |
 | `send_pending_notifications` | `apps/notifications/tasks.py` | every 15 s | Outbox → Telegram |
-| `check_low_stock(product_id)` | `apps/inventory/tasks.py` | on each movement | If total available ≤ `min_stock`, notify once per day per product |
+| `check_low_stock(product_id)` | `apps/inventory/tasks.py` | on each movement | If the company total on hand (all locations + in transit) is **below** `min_stock`, notify once per day per product. Per-location minimums only if Q18 asks for them |
 | `daily_report` | `apps/reports/tasks.py` | 20:00 every day | Text summary to admins |
 | `weekly_report` | `apps/reports/tasks.py` | Saturday 20:00 | Text summary + Excel file |
 | `monthly_report` | `apps/reports/tasks.py` | 1st of month 08:00 | Text summary + Excel file |
+| `yearly_report` | `apps/reports/tasks.py` | 1 January 08:00 | Text summary + Excel file with monthly breakdown |
 | `nightly_stock_check` | `apps/inventory/tasks.py` | 02:00 | `rebuild_stock_balances --check`; alert admin on mismatch |
 | `expire_link_tokens` | `apps/accounts/tasks.py` | hourly | Delete expired Telegram link codes |
 
@@ -829,7 +959,17 @@ Official receipt: 150,000 · No receipt: 95,000
 Received → Organization: 140,000 · Personal: 40,000
 
 By branch: Piassa 190,000 · Denbel 55,000
-Top products: VC-001 ×20, OC-014 ×8, DS-003 ×4
+By salesperson: Abebe 120,000 · Sara 85,000 · Kebede 40,000
+Products sold: VC-001 ×20, OC-014 ×8, DS-003 ×4
+```
+
+Low-stock message format (the client's example):
+
+```
+⚠️ LOW STOCK
+Office Chair A (OC-001)
+Current stock: 7 pcs
+Minimum: 10 pcs
 ```
 
 ### 4.5 Phase 4 tests
@@ -842,7 +982,10 @@ Top products: VC-001 ×20, OC-014 ×8, DS-003 ×4
 - [ ] Sales report totals equal the sum of confirmed order totals for the period.
 - [ ] Credit report outstanding equals the sum of customer balances.
 - [ ] Excel export opens with openpyxl and has the expected sheets and totals.
-- [ ] Low-stock alert fires once per day, not on every movement.
+- [ ] Low-stock alert fires once per day, not on every movement; it fires at 7 < 10 and not at 10 = 10; stock in transit counts.
+- [ ] Payments report filtered by order returns only that order's payments; Personal rows and totals are hidden without `view_personal_payments`.
+- [ ] Excel export without `export_reports` returns 403.
+- [ ] Yearly report monthly rows add up to the yearly totals.
 
 ### 4.6 Definition of done
 

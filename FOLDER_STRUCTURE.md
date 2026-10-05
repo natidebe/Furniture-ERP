@@ -41,15 +41,16 @@ backend/
 │   │       └── test_numbering.py
 │   │
 │   ├── accounts/                     # Phase 1 — users, roles, Telegram linking
-│   │   ├── models.py                 # User, TelegramLinkToken
-│   │   ├── permissions.py            # HasRole, IsAdmin, IsAccountantOrAdmin, IsSalesStaff, IsStorekeeper
+│   │   ├── models.py                 # User, Role, ERPPermission, ROLE_DEFAULT_PERMISSIONS, TelegramLinkToken
+│   │   ├── permissions.py            # Role classes + erp_permission(...) for per-user permissions
 │   │   ├── authentication.py         # BotUserAuthentication (Phase 4)
 │   │   ├── signals.py                # Keeps the Django Group in sync with User.role
 │   │   ├── services.py               # create_link_code(), link_telegram()
 │   │   ├── selectors.py
 │   │   ├── tasks.py                  # expire_link_tokens (Phase 4)
 │   │   └── api/                      # /auth/token/, /auth/refresh/, /auth/me/,
-│   │                                 # /auth/telegram/link-code/, /auth/telegram/link/, /users/
+│   │                                 # /auth/telegram/link-code/, /auth/telegram/link/, /users/,
+│   │                                 # /permissions/
 │   │
 │   ├── locations/                    # Phase 1 — Piassa, Piassa Underground, Denbel, Pawlos, TRANSIT
 │   │   ├── models.py                 # Location
@@ -105,7 +106,7 @@ backend/
 │   ├── sales/                        # Phase 3 — orders and delivery notes
 │   │   ├── models.py                 # SalesOrder(+Line), DeliveryNote(+Line)
 │   │   ├── services.py               # create_order(), confirm_order(), release_from_branch(),
-│   │   │                             # cancel_order(), return_goods(), ...
+│   │   │                             # cancel_order(), return_goods(), void_order(), ...
 │   │   ├── selectors.py
 │   │   ├── pdf.py                    # Delivery note PDF (WeasyPrint)
 │   │   ├── templates/sales/
@@ -113,23 +114,26 @@ backend/
 │   │   ├── management/commands/
 │   │   │   └── import_opening_balances.py
 │   │   └── api/                      # /orders/ (+ confirm, release-from-branch, status, cancel,
-│   │                                 # return, payments, delivery-note.pdf)
+│   │                                 # return, void, history, payments, delivery-note.pdf)
 │   │
 │   ├── payments/                     # Phase 3 — Organization / Personal payments
 │   │   ├── models.py                 # PaymentAccount, Payment, PaymentAllocation
-│   │   ├── services.py               # record_payment(), allocate_payment(), verify/reject/
-│   │   │                             # reverse_payment(), refresh_payment_status()
+│   │   ├── services.py               # record_payment(), allocate_payment(), allocate_oldest_first(),
+│   │   │                             # verify/reject/reverse/correct_payment(), refresh_payment_status()
 │   │   ├── selectors.py              # order_paid(), order_remaining(), line_paid(), ...
-│   │   └── api/                      # /payments/ (+ allocate, verify, reject, reverse),
+│   │   └── api/                      # /payments/ (+ allocate, verify, reject, reverse, correct),
 │   │                                 # /payment-accounts/
 │   │
-│   ├── reports/                      # Phase 4 — read-only, so no services.py
+│   ├── reports/                      # Search + history in Phase 3; reports in Phase 4. Read-only
 │   │   ├── models.py                 # (empty)
 │   │   ├── selectors.py              # sales_report(), payments_report(), credit_report(), ...
+│   │   ├── search.py                 # search() across products, customers, orders, DN, SR, payments
+│   │   ├── history.py                # transaction_history(): full timeline from any related number
 │   │   ├── excel.py                  # One openpyxl workbook per report
-│   │   ├── tasks.py                  # daily_report, weekly_report, monthly_report
+│   │   ├── tasks.py                  # daily_report, weekly_report, monthly_report, yearly_report
 │   │   └── api/                      # /reports/{sales|payments|credit|stock|movements|
-│   │                                 # open-requests|unverified-payments}/ (?format=xlsx)
+│   │                                 # open-requests|unverified-payments}/ (?format=xlsx),
+│   │                                 # /search/, /transactions/{number}/
 │   │
 │   └── notifications/                # notify() stub in Phase 2; outbox in Phase 4. No endpoints.
 │       ├── models.py                 # NotificationOutbox
