@@ -1,0 +1,9 @@
+# Root-level ignores; backend/.gitignore covers the Django project.
+.env
+venv/
+.venv/
+__pycache__/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
