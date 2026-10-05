@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, Back-End]
   pull_request:
-    branches: [main, develop]
+    branches: [main, Back-End]
 
 defaults:
   run:

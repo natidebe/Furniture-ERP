@@ -53,7 +53,7 @@ How to use this file:
 
 ### 1.1 Project setup
 
-- [x] Create the repo with `main` and `develop` branches (local; push to GitHub to enable CI).
+- [x] Repo `natidebe/Furniture-ERP` on GitHub: `Back-End` is the working branch for the backend, `main` is production.
 - [x] Skeleton created in `backend/`: the full layout from `FOLDER_STRUCTURE.md` (all 12 apps, with placeholder files for later phases) plus the config, Docker, CI and requirements files below. CI lives at the repo root in `.github/workflows/ci.yml` and runs inside `backend/`. Top level:
 
 ```
@@ -1063,7 +1063,7 @@ Minimum: 10 pcs
 - **Dates:** store UTC (`USE_TZ=True`); display and report in Africa/Addis_Ababa.
 - **Errors:** raise `BusinessRuleError(code, message)`; the API returns `400 {"code": "...", "detail": "..."}` so the frontend and bot can show clear messages.
 - **Commits:** small and per task, e.g. `inventory: add post_movement service with locking`.
-- **Branches:** `feature/<phase>-<task>` → PR into `develop` → staging; `develop` → `main` on each phase gate → production.
+- **Branches:** `feature/<phase>-<task>` → PR into `Back-End` → staging; `Back-End` → `main` on each phase gate → production.
 
 ## Appendix B — Environment variables
 
