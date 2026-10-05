@@ -1,7 +1,9 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from apps.accounts import selectors, services
 from apps.accounts.permissions import IsAdmin
@@ -12,6 +14,22 @@ from .serializers import (
     MeSerializer,
     UserSerializer,
 )
+
+
+class LoginView(TokenObtainPairView):
+    """JWT login. A locked-out account (django-axes) gets
+    403 {"code": "account_locked", "detail": ...}, so the login page can tell it apart from
+    a wrong password (401)."""
+
+    def post(self, request, *args, **kwargs):
+        try:
+            return super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            if getattr(request, "axes_locked_out", False):
+                return Response({"code": "account_locked",
+                                 "detail": "Too many failed attempts. Try again in 30 minutes."},
+                                status=status.HTTP_403_FORBIDDEN)
+            raise
 
 
 class MeView(APIView):

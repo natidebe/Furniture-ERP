@@ -27,8 +27,19 @@ def test_lockout_after_five_bad_passwords(api_client, make_user):
     for _ in range(5):
         assert _login(api_client, user.username, "wrong").status_code != 200
 
-    # Locked out: even the right password is refused now.
-    assert _login(api_client, user.username, DEFAULT_PASSWORD).status_code != 200
+    # Locked out: even the right password is refused, with a reason the UI can show.
+    locked = _login(api_client, user.username, DEFAULT_PASSWORD)
+    assert locked.status_code == 403
+    assert locked.data["code"] == "account_locked"
+
+
+@pytest.mark.django_db
+def test_wrong_password_is_401_not_locked(api_client, make_user):
+    user = make_user()
+
+    response = _login(api_client, user.username, "wrong")
+
+    assert response.status_code == 401
 
 
 @pytest.mark.django_db
