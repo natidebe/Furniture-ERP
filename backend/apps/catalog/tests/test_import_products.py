@@ -130,10 +130,63 @@ def test_filled_template_imports(tmp_path):
     path = str(tmp_path / "template.xlsx")
     call_command("import_products", template=path)
     wb = load_workbook(path)
-    wb["Products"].append(["oc-001", "Office chair", "Office chairs", "pcs", 4200, 5, ""])
+    wb["Products"].append(["oc-001", "Office chair", "Office chairs", "pcs", 4200, 3900, 5,
+                           ""])
     wb.save(path)
 
     call_command("import_products", path)
 
     product = Product.objects.get(code="OC-001")
-    assert (product.selling_price, product.min_stock) == (Decimal("4200.00"), 5)
+    assert (product.selling_price, product.wholesale_price, product.min_stock) == (
+        Decimal("4200.00"), Decimal("3900.00"), 5)
+
+
+def _wholesale_xlsx(tmp_path, rows, name="w.xlsx"):
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Code", "Name", "Category", "Unit", "Price", "Wholesale price"])
+    for row in rows:
+        ws.append(row)
+    path = tmp_path / name
+    wb.save(path)
+    return str(path)
+
+
+@pytest.mark.django_db
+def test_wholesale_above_price_is_a_row_error(tmp_path):
+    path = _wholesale_xlsx(tmp_path, [["VC-001", "Chair", "Visitor chairs", "pcs", 2500, 2600]])
+
+    with pytest.raises(CommandError) as exc:
+        call_command("import_products", path)
+
+    assert "row 2" in str(exc.value)
+    assert not Product.objects.exists()
+
+
+@pytest.mark.django_db
+def test_lowering_both_prices_applies_them_in_a_safe_order(tmp_path):
+    call_command("import_products", _wholesale_xlsx(
+        tmp_path, [["VC-001", "Chair", "Visitor chairs", "pcs", 2500, 2200]], "a.xlsx"))
+
+    # The new price 2100 is below the old wholesale 2200, so wholesale must drop first.
+    call_command("import_products", _wholesale_xlsx(
+        tmp_path, [["VC-001", "Chair", "Visitor chairs", "pcs", 2100, 1900]], "b.xlsx"))
+
+    product = Product.objects.get(code="VC-001")
+    assert (product.selling_price, product.wholesale_price) == (Decimal("2100.00"),
+                                                                 Decimal("1900.00"))
+    assert set(PriceHistory.objects.values_list("price_type", flat=True)) == {
+        "selling", "wholesale"}
+
+
+@pytest.mark.django_db
+def test_price_below_existing_wholesale_without_new_wholesale_is_reported(tmp_path):
+    call_command("import_products", _wholesale_xlsx(
+        tmp_path, [["VC-001", "Chair", "Visitor chairs", "pcs", 2500, 2200]], "a.xlsx"))
+
+    with pytest.raises(CommandError) as exc:
+        call_command("import_products", _wholesale_xlsx(
+            tmp_path, [["VC-001", "Chair", "Visitor chairs", "pcs", 2000, None]], "b.xlsx"))
+
+    assert "cannot be higher than the selling price" in str(exc.value)
+    assert Product.objects.get(code="VC-001").selling_price == Decimal("2500.00")

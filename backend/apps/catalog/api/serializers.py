@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.catalog.models import Category, PriceHistory, Product, Unit
+from apps.catalog.models import Category, PriceHistory, PriceType, Product, Unit
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -24,15 +24,16 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ["id", "code", "name", "category", "category_name", "unit", "unit_symbol",
-                  "selling_price", "min_stock", "description", "is_active",
+                  "selling_price", "wholesale_price", "min_stock", "description", "is_active",
                   "created_at", "updated_at"]
         read_only_fields = ["created_at", "updated_at"]
 
     def get_fields(self):
         fields = super().get_fields()
-        # The price is set on create; afterwards it changes only through change-price.
+        # Prices are set on create; afterwards they change only through change-price.
         if self.instance is not None:
             fields["selling_price"].read_only = True
+            fields["wholesale_price"].read_only = True
         return fields
 
     def validate_code(self, value):
@@ -46,6 +47,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class ChangePriceSerializer(serializers.Serializer):
+    price_type = serializers.ChoiceField(choices=PriceType.choices, default=PriceType.SELLING)
     new_price = serializers.DecimalField(max_digits=14, decimal_places=2,
                                          min_value=Decimal("0.01"))
     reason = serializers.CharField(max_length=255, required=False, allow_blank=True)
@@ -57,5 +59,5 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PriceHistory
-        fields = ["id", "old_price", "new_price", "changed_by", "changed_by_name",
+        fields = ["id", "price_type", "old_price", "new_price", "changed_by", "changed_by_name",
                   "changed_at", "reason"]

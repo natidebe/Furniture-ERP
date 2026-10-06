@@ -36,8 +36,11 @@ class Product(ActiveModel):
     name = models.CharField(max_length=200)
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="products")
     unit = models.ForeignKey(Unit, on_delete=models.PROTECT, related_name="products")
-    # Changed only through services.change_price(), which records PriceHistory.
+    # Both prices change only through services.change_price(), which records PriceHistory.
     selling_price = models.DecimalField(max_digits=14, decimal_places=2)
+    # What resellers pay (Q15). Empty = resellers pay the selling price.
+    wholesale_price = models.DecimalField(max_digits=14, decimal_places=2, null=True,
+                                          blank=True)
     min_stock = models.PositiveIntegerField(default=0)
     description = models.TextField(blank=True)
 
@@ -48,6 +51,11 @@ class Product(ActiveModel):
         constraints = [
             models.CheckConstraint(condition=models.Q(selling_price__gt=0),
                                    name="product_price_positive"),
+            models.CheckConstraint(
+                condition=(models.Q(wholesale_price__isnull=True)
+                           | models.Q(wholesale_price__gt=0,
+                                      wholesale_price__lte=models.F("selling_price"))),
+                name="wholesale_price_positive_and_not_above_selling"),
         ]
 
     def __str__(self):
@@ -58,9 +66,16 @@ class Product(ActiveModel):
         super().save(*args, **kwargs)
 
 
+class PriceType(models.TextChoices):
+    SELLING = "selling"
+    WHOLESALE = "wholesale"
+
+
 class PriceHistory(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="price_history")
-    old_price = models.DecimalField(max_digits=14, decimal_places=2)
+    price_type = models.CharField(max_length=10, choices=PriceType.choices,
+                                  default=PriceType.SELLING)
+    old_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     new_price = models.DecimalField(max_digits=14, decimal_places=2)
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                    on_delete=models.PROTECT, related_name="+")
@@ -72,4 +87,4 @@ class PriceHistory(models.Model):
         verbose_name_plural = "price history"
 
     def __str__(self):
-        return f"{self.product.code}: {self.old_price} → {self.new_price}"
+        return f"{self.product.code} {self.price_type}: {self.old_price} → {self.new_price}"

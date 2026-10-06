@@ -18,12 +18,13 @@ class UnitAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(SimpleHistoryAdmin):
-    list_display = ("code", "name", "category", "unit", "selling_price", "min_stock", "is_active")
+    list_display = ("code", "name", "category", "unit", "selling_price", "wholesale_price",
+                    "min_stock", "is_active")
     list_filter = ("category", "is_active")
     search_fields = ("code", "name")
     # Prices change through the change-price endpoint so PriceHistory and the audit log
     # are always written.
-    readonly_fields = ("selling_price",)
+    readonly_fields = ("selling_price", "wholesale_price")
 
     def get_readonly_fields(self, request, obj=None):
         return self.readonly_fields if obj else ()
@@ -31,7 +32,8 @@ class ProductAdmin(SimpleHistoryAdmin):
 
 @admin.register(PriceHistory)
 class PriceHistoryAdmin(admin.ModelAdmin):
-    list_display = ("product", "old_price", "new_price", "changed_by", "changed_at", "reason")
+    list_display = ("product", "price_type", "old_price", "new_price", "changed_by",
+                    "changed_at", "reason")
     search_fields = ("product__code", "product__name")
 
     def has_add_permission(self, request):
