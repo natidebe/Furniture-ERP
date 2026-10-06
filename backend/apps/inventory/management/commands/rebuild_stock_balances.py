@@ -34,21 +34,28 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"{products[m['product_id']].code} @ {locations[m['location_id']].code}: "
                     f"on hand {m['on_hand']} (ledger {m['expected_on_hand']}), "
-                    f"reserved {m['reserved']} (open requests {m['expected_reserved']})")
+                    f"reserved {m['reserved']} (open requests {m['expected_reserved']}), "
+                    f"display {m['display']} (ledger {m['expected_display']}), "
+                    f"damaged {m['damaged']} (ledger {m['expected_damaged']})")
 
             if check:
                 raise CommandError(f"{len(mismatches)} balance(s) do not match the ledger.")
 
             for m in mismatches:
-                if m["expected_reserved"] > m["expected_on_hand"] or m["expected_on_hand"] < 0:
+                kept_apart = m["expected_display"] + m["expected_damaged"]
+                if (m["expected_on_hand"] < 0 or min(m["expected_display"],
+                                                     m["expected_damaged"]) < 0
+                        or m["expected_reserved"] + kept_apart > m["expected_on_hand"]):
                     raise CommandError(
                         f"Ledger itself is inconsistent for product {m['product_id']} at "
                         f"location {m['location_id']}; nothing was changed. Investigate.")
                 bal, _ = StockBalance.objects.get_or_create(product_id=m["product_id"],
                                                             location_id=m["location_id"])
-                bal.on_hand, bal.reserved = m["expected_on_hand"], m["expected_reserved"]
-                bal.save(update_fields=["on_hand", "reserved", "updated_at"])
+                fields = ("on_hand", "reserved", "display", "damaged")
+                for field in fields:
+                    setattr(bal, field, m[f"expected_{field}"])
+                bal.save(update_fields=[*fields, "updated_at"])
                 audit_log(actor=None, action="stock_balance_rebuilt", obj=bal,
-                          before={"on_hand": m["on_hand"], "reserved": m["reserved"]},
-                          after={"on_hand": bal.on_hand, "reserved": bal.reserved})
+                          before={f: m[f] for f in fields},
+                          after={f: getattr(bal, f) for f in fields})
             self.stdout.write(self.style.WARNING(f"Fixed {len(mismatches)} balance(s)."))

@@ -18,6 +18,15 @@ class MovementType(models.TextChoices):
     REVERSAL = "reversal"          # cancels an earlier movement
 
 
+class Condition(models.TextChoices):
+    """Display and damaged pieces stay in the location's stock (and the company total) but are
+    kept apart: never reserved for a request and never sold as new (D15)."""
+
+    NEW = "new"
+    DISPLAY = "display"
+    DAMAGED = "damaged"
+
+
 class StockMovementQuerySet(models.QuerySet):
     def update(self, **kwargs):
         raise BusinessRuleError("immutable", "Stock movements cannot be edited.")
@@ -42,6 +51,8 @@ class StockMovement(models.Model):
     to_location = models.ForeignKey("locations.Location", null=True, blank=True,
                                     on_delete=models.PROTECT, related_name="+")
     type = models.CharField(max_length=20, choices=MovementType.choices)
+    condition = models.CharField(max_length=10, choices=Condition.choices,
+                                 default=Condition.NEW)
     reference_type = models.CharField(max_length=30)   # "goods_receipt", "stock_release", ...
     reference_id = models.CharField(max_length=40)
     # D4: the master transaction number (SO-… once sales exist, or SR-… for a restock).
@@ -82,7 +93,8 @@ class StockMovement(models.Model):
 class StockBalance(models.Model):
     """Cached per-location balance; always equal to the sum of movements (rebuild checks it).
 
-    `reserved` is stock held for open stock requests; `available = on_hand − reserved`.
+    `on_hand` counts every piece. Of those, `display` and `damaged` are kept apart (D15) and
+    `reserved` is new stock held for requests or sales; `available` is new stock free to sell.
     """
 
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT,
@@ -91,6 +103,8 @@ class StockBalance(models.Model):
                                  related_name="balances")
     on_hand = models.IntegerField(default=0)
     reserved = models.IntegerField(default=0)
+    display = models.IntegerField(default=0)
+    damaged = models.IntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -99,16 +113,66 @@ class StockBalance(models.Model):
                                     name="one_balance_per_product_location"),
             models.CheckConstraint(condition=Q(on_hand__gte=0), name="on_hand_not_negative"),
             models.CheckConstraint(condition=Q(reserved__gte=0), name="reserved_not_negative"),
-            models.CheckConstraint(condition=Q(reserved__lte=F("on_hand")),
-                                   name="reserved_within_on_hand"),
+            models.CheckConstraint(condition=Q(display__gte=0), name="display_not_negative"),
+            models.CheckConstraint(condition=Q(damaged__gte=0), name="damaged_not_negative"),
+            models.CheckConstraint(
+                condition=Q(reserved__lte=F("on_hand") - F("display") - F("damaged")),
+                name="reserved_within_new_stock"),
         ]
 
     def __str__(self):
         return f"{self.product_id}@{self.location_id}: {self.on_hand} ({self.reserved} reserved)"
 
     @property
+    def new(self) -> int:
+        return self.on_hand - self.display - self.damaged
+
+    @property
     def available(self) -> int:
-        return self.on_hand - self.reserved
+        """New stock free to sell or reserve."""
+        return self.new - self.reserved
+
+    def count_of(self, condition: str) -> int:
+        return {Condition.NEW: self.new, Condition.DISPLAY: self.display,
+                Condition.DAMAGED: self.damaged}[condition]
+
+
+class StockConditionChange(models.Model):
+    """Pieces moved between new, display and damaged at one location (D15). Immutable,
+    like movements; the counts are rebuilt from these and the movements."""
+
+    number = models.CharField(max_length=20, unique=True)
+    product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
+    location = models.ForeignKey("locations.Location", on_delete=models.PROTECT,
+                                 related_name="+")
+    qty = models.PositiveIntegerField()
+    from_condition = models.CharField(max_length=10, choices=Condition.choices)
+    to_condition = models.CharField(max_length=10, choices=Condition.choices)
+    reason = models.CharField(max_length=255)
+    person = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                               related_name="+")
+    occurred_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    objects = StockMovementQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-occurred_at", "-id"]
+        constraints = [
+            models.CheckConstraint(condition=Q(qty__gt=0), name="condition_change_qty_positive"),
+            models.CheckConstraint(condition=~Q(from_condition=F("to_condition")),
+                                   name="condition_change_changes_something"),
+        ]
+
+    def __str__(self):
+        return f"{self.number} {self.qty} {self.from_condition}→{self.to_condition}"
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise BusinessRuleError("immutable", "Condition changes cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise BusinessRuleError("immutable", "Condition changes cannot be deleted.")
 
 
 class GoodsReceipt(models.Model):
@@ -158,6 +222,8 @@ class StockAdjustment(models.Model):
                                  related_name="+")
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
     qty_delta = models.IntegerField()  # negative removes stock, positive adds
+    condition = models.CharField(max_length=10, choices=Condition.choices,
+                                 default=Condition.NEW)  # e.g. write off damaged pieces
     reason = models.CharField(max_length=20, choices=AdjustmentReason.choices)
     note = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=10, choices=AdjustmentStatus.choices,
@@ -222,6 +288,8 @@ class StockTransfer(models.Model):
 class StockTransferLine(models.Model):
     transfer = models.ForeignKey(StockTransfer, on_delete=models.PROTECT, related_name="lines")
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
+    condition = models.CharField(max_length=10, choices=Condition.choices,
+                                 default=Condition.NEW)  # e.g. a damaged piece sent for repair
     qty_sent = models.PositiveIntegerField()
     qty_received = models.PositiveIntegerField(null=True, blank=True)
 

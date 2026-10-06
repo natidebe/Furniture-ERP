@@ -29,7 +29,8 @@ CanSeeOrders = role_permission("salesperson", "storekeeper", "accountant", "admi
 def _lines(validated) -> list[dict]:
     lines = []
     for line in validated:
-        item = {"product": line["product"], "qty": line["qty"], "discount": line["discount"]}
+        item = {"product": line["product"], "qty": line["qty"], "discount": line["discount"],
+                "condition": line["condition"]}
         if line.get("source_location") is not None:
             item["source_location"] = line["source_location"]
         lines.append(item)

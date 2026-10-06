@@ -89,6 +89,10 @@ class SalesOrderLine(models.Model):
     unit_price = models.DecimalField(max_digits=14, decimal_places=2)  # snapshot (D11)
     discount = models.DecimalField(max_digits=14, decimal_places=2, default=0)  # line amount
     line_total = models.DecimalField(max_digits=14, decimal_places=2)
+    # new, or a display / damaged piece sold as such (D15) — only from the branch's own stock.
+    condition = models.CharField(max_length=10, default="new",
+                                 choices=[("new", "new"), ("display", "display"),
+                                          ("damaged", "damaged")])
     # Where the goods come from: the branch (or its sub-store) = sold on confirmation;
     # a releasing warehouse (Pawlos) = a stock request.
     source_location = models.ForeignKey("locations.Location", on_delete=models.PROTECT,
@@ -101,8 +105,8 @@ class SalesOrderLine(models.Model):
     class Meta:
         ordering = ["id"]
         constraints = [
-            models.UniqueConstraint(fields=["order", "product"],
-                                    name="one_line_per_product_per_order"),
+            models.UniqueConstraint(fields=["order", "product", "condition"],
+                                    name="one_line_per_product_condition_per_order"),
             models.CheckConstraint(condition=Q(qty__gt=0), name="order_line_qty_positive"),
             models.CheckConstraint(condition=Q(discount__gte=0),
                                    name="order_line_discount_not_negative"),

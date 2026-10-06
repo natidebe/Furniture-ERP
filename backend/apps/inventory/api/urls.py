@@ -3,6 +3,7 @@ from rest_framework.routers import SimpleRouter
 
 from .views import (
     AdjustmentViewSet,
+    ConditionChangeViewSet,
     GoodsReceiptViewSet,
     MovementViewSet,
     ProductStockView,
@@ -13,6 +14,7 @@ from .views import (
 router = SimpleRouter()
 # stock/movements before stock, so "stock/movements/" is never read as a balance id.
 router.register("stock/movements", MovementViewSet, basename="movement")
+router.register("stock/condition-changes", ConditionChangeViewSet, basename="condition-change")
 router.register("stock", StockViewSet, basename="stock")
 router.register("goods-receipts", GoodsReceiptViewSet, basename="goods-receipt")
 router.register("adjustments", AdjustmentViewSet, basename="adjustment")

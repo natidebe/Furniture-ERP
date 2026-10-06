@@ -22,7 +22,13 @@ from apps.core.exceptions import BusinessRuleError
 from apps.core.numbering import DELIVERY_NOTE, SALES_ORDER, SALES_RETURN, next_number
 from apps.core.services import get_settings
 from apps.inventory import services as inventory
-from apps.inventory.models import TRANSIT_CODE, MovementType, StockMovement, TransferStatus
+from apps.inventory.models import (
+    TRANSIT_CODE,
+    Condition,
+    MovementType,
+    StockMovement,
+    TransferStatus,
+)
 from apps.notifications.services import notify
 from apps.payments import selectors as money
 from apps.payments import services as payments
@@ -87,17 +93,22 @@ def _discount_limit_ok(user, discount: Decimal, gross: Decimal) -> bool:
 
 
 def _build_lines(order, lines, user):
-    """lines = [{"product", "qty", "discount"?, "source_location"?}] → SalesOrderLine rows.
-    Prices come from the product for this customer (D11), never from the request."""
+    """lines = [{"product", "qty", "discount"?, "source_location"?, "condition"?}] →
+    SalesOrderLine rows. Prices come from the product for this customer (D11), never from the
+    request. Display and damaged pieces (D15) are sold from the branch's own stock, usually
+    with a discount."""
     if not lines:
         raise BusinessRuleError("no_lines", "Add at least one product.")
     direct = {loc.pk for loc in direct_locations(order.branch)}
     seen = set()
     for item in lines:
         product = item["product"]
-        if product.pk in seen:
+        condition = item.get("condition") or Condition.NEW
+        if condition not in Condition.values:
+            raise BusinessRuleError("invalid_condition", "Choose new, display or damaged.")
+        if (product.pk, condition) in seen:
             raise BusinessRuleError("duplicate_product", f"{product.code} is listed twice.")
-        seen.add(product.pk)
+        seen.add((product.pk, condition))
         if not product.is_active:
             raise BusinessRuleError("inactive_product", f"{product.code} is not sold any more.")
         qty = _qty(item["qty"])
@@ -106,6 +117,10 @@ def _build_lines(order, lines, user):
                 source.pk in direct or source.can_release):
             raise BusinessRuleError("invalid_source",
                                     f"{product.code} cannot come from {source.code}.")
+        if condition != Condition.NEW and source.pk not in direct:
+            raise BusinessRuleError("invalid_source",
+                                    f"A {condition} {product.code} is sold from the branch's "
+                                    f"own stock, not requested from {source.code}.")
         unit_price = price_for(product, order.customer)
         gross = unit_price * qty
         discount = Decimal(str(item.get("discount") or 0)).quantize(CENT, ROUND_HALF_UP)
@@ -119,7 +134,8 @@ def _build_lines(order, lines, user):
                 f"{get_settings().max_salesperson_discount_pct}% limit; ask the accountant.")
         SalesOrderLine.objects.create(order=order, product=product, qty=qty,
                                       unit_price=unit_price, discount=discount,
-                                      line_total=gross - discount, source_location=source)
+                                      line_total=gross - discount, source_location=source,
+                                      condition=condition)
 
 
 def recompute_total(order) -> SalesOrder:
@@ -160,7 +176,7 @@ def _hand_over(order, location, items, user, *, consume_reservation=False) -> De
             product=line.product, qty=qty, type=MovementType.SALE, from_location=location,
             customer=order.customer, reference_type="delivery_note", reference_id=note.number,
             transaction_number=order.number, person=user,
-            consume_reservation=consume_reservation)
+            consume_reservation=consume_reservation, condition=line.condition)
         line.qty_released += qty
         line.save(update_fields=["qty_released"])
     return note
@@ -292,7 +308,8 @@ def update_draft_order(*, order, user, lines=None, customer=None, receipt_type=N
         order.customer = customer
         if lines is None:  # re-price the same lines for the new customer
             lines = [{"product": ln.product, "qty": ln.qty, "discount": ln.discount,
-                      "source_location": ln.source_location} for ln in order.lines.all()]
+                      "source_location": ln.source_location, "condition": ln.condition}
+                     for ln in order.lines.all()]
     if receipt_type is not None:
         order.receipt_type = receipt_type
     if notes is not None:
@@ -414,7 +431,10 @@ def on_transfer_received(*, transfer, received: dict) -> None:
         return  # cancelled or voided: the goods stay as free branch stock
     for tline in transfer.lines.select_related("product"):
         qty = received.get(tline.pk, 0)
-        line = order.lines.select_for_update().filter(product=tline.product).first()
+        if tline.condition != Condition.NEW:
+            continue  # only new stock is requested for sales
+        line = (order.lines.select_for_update()
+                .filter(product=tline.product, condition=Condition.NEW).first())
         if not qty or line is None:
             continue
         hold = min(qty, line.qty_open - line.qty_awaiting)
@@ -437,7 +457,8 @@ def on_pickup_released(*, request, release, picked) -> None:
                                        location=request.source_location,
                                        issued_by=release.released_by)
     for request_line, qty in picked:
-        line = order.lines.select_for_update().get(product=request_line.product)
+        line = order.lines.select_for_update().get(product=request_line.product,
+                                                   condition=Condition.NEW)
         if qty > line.qty_open - line.qty_awaiting:
             raise BusinessRuleError("qty_exceeds_order",
                                     f"{line.product.code}: the customer is owed only "
@@ -569,8 +590,9 @@ def _returned_value(line, qty_returned_total: int) -> Decimal:
 
 @transaction.atomic
 def return_goods(*, order, lines, location, user, reason: str) -> SalesReturn:
-    """The customer brings goods back: stock returns to `location`, the sale's total drops,
-    and money already paid beyond the new total becomes the customer's advance."""
+    """The customer brings goods back: stock returns to `location` (into the damaged count
+    when a line says `"condition": "damaged"`), the sale's total drops, and money already paid
+    beyond the new total becomes the customer's advance."""
     reason = _require_reason(reason)
     if user.role not in (Role.ACCOUNTANT, Role.ADMIN):
         raise BusinessRuleError("permission_denied", "Only the accountant records returns.")
@@ -593,7 +615,10 @@ def return_goods(*, order, lines, location, user, reason: str) -> SalesReturn:
                 "qty_exceeds_order",
                 f"{line.product.code}: only {line.qty_released - line.qty_returned} "
                 f"can be returned.")
-        picked.append((line, qty))
+        condition = item.get("condition") or Condition.NEW
+        if condition not in Condition.values:
+            raise BusinessRuleError("invalid_condition", "Choose new, display or damaged.")
+        picked.append((line, qty, condition))
     if not picked:
         raise BusinessRuleError("no_lines", "Choose what is returned.")
 
@@ -601,7 +626,7 @@ def return_goods(*, order, lines, location, user, reason: str) -> SalesReturn:
                                      location=location, amount=Decimal("0"), reason=reason,
                                      created_by=user)
     total = Decimal("0")
-    for line, qty in picked:
+    for line, qty, condition in picked:
         amount = (_returned_value(line, line.qty_returned + qty)
                   - _returned_value(line, line.qty_returned))
         SalesReturnLine.objects.create(sales_return=ret, order_line=line, product=line.product,
@@ -609,7 +634,8 @@ def return_goods(*, order, lines, location, user, reason: str) -> SalesReturn:
         inventory.post_movement(
             product=line.product, qty=qty, type=MovementType.RETURN, to_location=location,
             customer=order.customer, reference_type="sales_return", reference_id=ret.number,
-            transaction_number=order.number, person=user, note=reason[:255])
+            transaction_number=order.number, person=user, note=reason[:255],
+            condition=condition)
         line.qty_returned += qty
         line.save(update_fields=["qty_returned"])
         total += amount

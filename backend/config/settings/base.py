@@ -130,6 +130,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "Furniture ERP API",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "ENUM_NAME_OVERRIDES": {"StockConditionEnum": "apps.inventory.models.Condition"},
 }
 
 CELERY_BROKER_URL = config("REDIS_URL", default="redis://localhost:6379/0")

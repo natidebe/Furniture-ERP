@@ -5,6 +5,7 @@ from .models import (
     GoodsReceiptLine,
     StockAdjustment,
     StockBalance,
+    StockConditionChange,
     StockMovement,
     StockTransfer,
     StockTransferLine,
@@ -48,7 +49,8 @@ class StockMovementAdmin(ReadOnlyAdmin):
 
 @admin.register(StockBalance)
 class StockBalanceAdmin(ReadOnlyAdmin):
-    list_display = ("product", "location", "on_hand", "reserved", "updated_at")
+    list_display = ("product", "location", "on_hand", "reserved", "display", "damaged",
+                    "updated_at")
     list_filter = ("location",)
     search_fields = ("product__code", "product__name")
 
@@ -87,3 +89,11 @@ class StockTransferAdmin(ReadOnlyAdmin):
     @admin.display(boolean=True)
     def has_discrepancy(self, obj):
         return obj.has_discrepancy
+
+
+@admin.register(StockConditionChange)
+class StockConditionChangeAdmin(ReadOnlyAdmin):
+    list_display = ("number", "occurred_at", "product", "location", "qty", "from_condition",
+                    "to_condition", "person")
+    list_filter = ("location", "from_condition", "to_condition")
+    search_fields = ("number", "product__code")

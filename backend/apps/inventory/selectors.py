@@ -6,7 +6,7 @@ from django.db.models.functions import Coalesce
 from apps.catalog.models import Product
 from apps.locations.models import Location
 
-from .models import TRANSIT_CODE, StockBalance, StockMovement
+from .models import TRANSIT_CODE, Condition, StockBalance, StockConditionChange, StockMovement
 
 
 def transit_location() -> Location:
@@ -26,15 +26,18 @@ def balances():
 
 
 def products_with_total():
-    """Products annotated with `total_on_hand` across every location, including transit (D7)."""
-    total = (StockBalance.objects.filter(product=OuterRef("pk")).values("product")
-             .annotate(t=Sum("on_hand")).values("t"))
-    return Product.objects.annotate(total_on_hand=Coalesce(Subquery(total), Value(0)))
+    """Products annotated with `total_on_hand` across every location, including transit (D7),
+    and `total_new`: the same without display and damaged pieces (what can be sold as new)."""
+    per_product = StockBalance.objects.filter(product=OuterRef("pk")).values("product")
+    total = per_product.annotate(t=Sum("on_hand")).values("t")
+    new = per_product.annotate(t=Sum(F("on_hand") - F("display") - F("damaged"))).values("t")
+    return Product.objects.annotate(total_on_hand=Coalesce(Subquery(total), Value(0)),
+                                    total_new=Coalesce(Subquery(new), Value(0)))
 
 
 def low_stock_products():
-    """Products whose company total is below the admin-set minimum."""
-    return products_with_total().filter(min_stock__gt=0, total_on_hand__lt=F("min_stock"))
+    """Products whose sellable (new) company stock is below the admin-set minimum (D15)."""
+    return products_with_total().filter(min_stock__gt=0, total_new__lt=F("min_stock"))
 
 
 def stock_rows(products, locations) -> list[dict]:
@@ -52,6 +55,8 @@ def stock_rows(products, locations) -> list[dict]:
             stock[loc.code] = {
                 "on_hand": bal.on_hand if bal else 0,
                 "reserved": bal.reserved if bal else 0,
+                "display": bal.display if bal else 0,
+                "damaged": bal.damaged if bal else 0,
                 "available": bal.available if bal else 0,
             }
         rows.append({
@@ -59,6 +64,7 @@ def stock_rows(products, locations) -> list[dict]:
             "stock": stock,
             "in_transit": stock.get(TRANSIT_CODE, {}).get("on_hand", 0),
             "total": sum(b.on_hand for b in per_location.values()),
+            "total_new": sum(b.new for b in per_location.values()),
         })
     return rows
 
@@ -111,20 +117,40 @@ def expected_reserved() -> dict[tuple[int, int], int]:
     return dict(result)
 
 
+def expected_condition(condition: str) -> dict[tuple[int, int], int]:
+    """(product_id, location_id) → display or damaged pieces, from movements carrying that
+    condition and the condition changes (D15)."""
+    result: dict[tuple[int, int], int] = defaultdict(int)
+    moves = StockMovement.objects.filter(condition=condition)
+    for row in (moves.filter(to_location__isnull=False)
+                .values("product_id", "to_location_id").annotate(q=Sum("qty"))):
+        result[(row["product_id"], row["to_location_id"])] += row["q"]
+    for row in (moves.filter(from_location__isnull=False)
+                .values("product_id", "from_location_id").annotate(q=Sum("qty"))):
+        result[(row["product_id"], row["from_location_id"])] -= row["q"]
+    for field, sign in (("to_condition", 1), ("from_condition", -1)):
+        for row in (StockConditionChange.objects.filter(**{field: condition})
+                    .values("product_id", "location_id").annotate(q=Sum("qty"))):
+            result[(row["product_id"], row["location_id"])] += sign * row["q"]
+    return dict(result)
+
+
+FIELDS = ("on_hand", "reserved", "display", "damaged")
+
+
 def balance_mismatches() -> list[dict]:
-    """Every balance whose on_hand or reserved differs from what the ledger says."""
-    on_hand, reserved = expected_on_hand(), expected_reserved()
+    """Every balance whose counts differ from what the ledger says."""
+    expected = {"on_hand": expected_on_hand(), "reserved": expected_reserved(),
+                "display": expected_condition(Condition.DISPLAY),
+                "damaged": expected_condition(Condition.DAMAGED)}
     stored = {(b.product_id, b.location_id): b for b in StockBalance.objects.all()}
+    keys = set(stored).union(*expected.values())
     mismatches = []
-    for key in sorted(set(on_hand) | set(reserved) | set(stored)):
+    for key in sorted(keys):
         bal = stored.get(key)
-        want_on_hand, want_reserved = on_hand.get(key, 0), reserved.get(key, 0)
-        have_on_hand = bal.on_hand if bal else 0
-        have_reserved = bal.reserved if bal else 0
-        if (have_on_hand, have_reserved) != (want_on_hand, want_reserved):
-            mismatches.append({
-                "product_id": key[0], "location_id": key[1],
-                "on_hand": have_on_hand, "expected_on_hand": want_on_hand,
-                "reserved": have_reserved, "expected_reserved": want_reserved,
-            })
+        have = {f: getattr(bal, f) if bal else 0 for f in FIELDS}
+        want = {f: expected[f].get(key, 0) for f in FIELDS}
+        if have != want:
+            mismatches.append({"product_id": key[0], "location_id": key[1],
+                               **have, **{f"expected_{f}": want[f] for f in FIELDS}})
     return mismatches

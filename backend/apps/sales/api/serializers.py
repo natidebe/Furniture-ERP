@@ -4,16 +4,20 @@ from rest_framework import serializers
 
 from apps.catalog.models import Product
 from apps.customers.models import Customer
+from apps.inventory.models import Condition
 from apps.locations.models import Location
 from apps.payments import selectors as money
 from apps.payments.api.serializers import payment_dict
 from apps.payments.models import PaymentAccount, PaymentMethod
 from apps.sales.models import Channel, DeliveryNote, ReceiptType, SalesOrder
 
+CONDITIONS = Condition.choices
+
 
 class OrderLineInputSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all())
     qty = serializers.IntegerField(min_value=1)
+    condition = serializers.ChoiceField(choices=CONDITIONS, default="new")
     discount = serializers.DecimalField(max_digits=14, decimal_places=2,
                                         min_value=Decimal("0"), required=False,
                                         default=Decimal("0"))
@@ -64,10 +68,14 @@ class LinesSerializer(serializers.Serializer):
     lines = LineQtySerializer(many=True, allow_empty=False)
 
 
+class ReturnLineSerializer(LineQtySerializer):
+    condition = serializers.ChoiceField(choices=CONDITIONS, default="new")
+
+
 class ReturnSerializer(serializers.Serializer):
     location = serializers.PrimaryKeyRelatedField(queryset=Location.objects.all())
     reason = serializers.CharField(max_length=500)
-    lines = LineQtySerializer(many=True, allow_empty=False)
+    lines = ReturnLineSerializer(many=True, allow_empty=False)
 
 
 class OrderReasonSerializer(serializers.Serializer):
@@ -118,7 +126,8 @@ def order_dict(order, user, *, detail=True) -> dict:
         return data
     data["lines"] = [{
         "id": line.pk, "product": line.product_id, "product_code": line.product.code,
-        "product_name": line.product.name, "qty": line.qty, "unit_price": str(line.unit_price),
+        "product_name": line.product.name, "condition": line.condition, "qty": line.qty,
+        "unit_price": str(line.unit_price),
         "discount": str(line.discount), "line_total": str(line.line_total),
         "source_location_code": line.source_location.code,
         "qty_released": line.qty_released, "qty_awaiting": line.qty_awaiting,

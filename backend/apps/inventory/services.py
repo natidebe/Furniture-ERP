@@ -9,17 +9,26 @@ from django.utils import timezone
 from apps.accounts.models import ERPPermission, Role
 from apps.audit.services import audit_log
 from apps.core.exceptions import BusinessRuleError
-from apps.core.numbering import ADJUSTMENT, GOODS_RECEIPT, MOVEMENT, TRANSFER, next_number
+from apps.core.numbering import (
+    ADJUSTMENT,
+    CONDITION_CHANGE,
+    GOODS_RECEIPT,
+    MOVEMENT,
+    TRANSFER,
+    next_number,
+)
 from apps.notifications.services import notify
 
 from .models import (
     TRANSIT_CODE,
     AdjustmentStatus,
+    Condition,
     GoodsReceipt,
     GoodsReceiptLine,
     MovementType,
     StockAdjustment,
     StockBalance,
+    StockConditionChange,
     StockMovement,
     StockTransfer,
     StockTransferLine,
@@ -42,17 +51,25 @@ def _check_qty(qty) -> int:
     return qty
 
 
+def _check_condition(condition) -> str:
+    if condition not in Condition.values:
+        raise BusinessRuleError("invalid_condition", "Choose new, display or damaged.")
+    return condition
+
+
 def check_lines(lines) -> list[dict]:
-    """lines = [{"product": Product, "qty": int}, ...] — non-empty, one line per product."""
+    """lines = [{"product": Product, "qty": int, "condition"?: str}, ...] — non-empty,
+    one line per product and condition."""
     if not lines:
         raise BusinessRuleError("no_lines", "Add at least one product.")
     seen = set()
     for line in lines:
         _check_qty(line["qty"])
-        if line["product"].pk in seen:
+        key = (line["product"].pk, _check_condition(line.get("condition", Condition.NEW)))
+        if key in seen:
             raise BusinessRuleError("duplicate_product",
                                     f"{line['product'].code} is listed twice.")
-        seen.add(line["product"].pk)
+        seen.add(key)
     return lines
 
 
@@ -109,15 +126,19 @@ def _queue_low_stock_check(product_id: int) -> None:
 @transaction.atomic
 def post_movement(*, product, qty, type, from_location=None, to_location=None,
                   reference_type, reference_id, person, customer=None, note="",
-                  transaction_number="", reverses=None,
-                  consume_reservation=False) -> StockMovement:
+                  transaction_number="", reverses=None, consume_reservation=False,
+                  condition=Condition.NEW) -> StockMovement:
     """Post one movement and update balances.
 
     consume_reservation=True takes stock that an open request reserved at from_location:
-    on_hand and reserved both drop by qty. Otherwise only free stock (on_hand − reserved)
-    can leave, so stock held for one request can never be taken by another.
+    on_hand and reserved both drop by qty. Otherwise only free new stock can leave, so stock
+    held for one request can never be taken by another. `condition` display/damaged moves
+    pieces out of / into those counts instead (D15); they are never reserved.
     """
     _check_qty(qty)
+    _check_condition(condition)
+    if consume_reservation and condition != Condition.NEW:
+        raise BusinessRuleError("invalid_condition", "Only new stock is reserved.")
     if from_location is None and to_location is None:
         raise BusinessRuleError("no_location", "A movement needs a from or to location.")
     if from_location is not None and to_location is not None \
@@ -133,32 +154,84 @@ def post_movement(*, product, qty, type, from_location=None, to_location=None,
     if from_location is not None:
         src = balances[from_location.pk]
         if consume_reservation:
-            if qty > src.reserved or qty > src.on_hand:
+            if qty > src.reserved:
                 raise BusinessRuleError(
                     "reservation_mismatch",
                     f"{product.code} at {from_location.code}: only {src.reserved} reserved.")
             src.reserved -= qty
-        elif qty > src.available:
-            raise BusinessRuleError(
-                "insufficient_stock",
-                f"Only {src.available} {product.code} available at {from_location.code}.")
+        elif condition == Condition.NEW:
+            if qty > src.available:
+                raise BusinessRuleError(
+                    "insufficient_stock",
+                    f"Only {src.available} {product.code} available at {from_location.code}.")
+        else:
+            have = src.count_of(condition)
+            if qty > have:
+                raise BusinessRuleError(
+                    "insufficient_stock",
+                    f"Only {have} {condition} {product.code} at {from_location.code}.")
+            setattr(src, condition, have - qty)
         src.on_hand -= qty
-        src.save(update_fields=["on_hand", "reserved", "updated_at"])
+        src.save(update_fields=["on_hand", "reserved", "display", "damaged", "updated_at"])
 
     if to_location is not None:
         dst = balances[to_location.pk]
         dst.on_hand += qty
-        dst.save(update_fields=["on_hand", "updated_at"])
+        if condition != Condition.NEW:
+            setattr(dst, condition, dst.count_of(condition) + qty)
+        dst.save(update_fields=["on_hand", "display", "damaged", "updated_at"])
 
     movement = StockMovement.objects.create(
         number=next_number(MOVEMENT), product=product, qty=qty, type=type,
         from_location=from_location, to_location=to_location,
         reference_type=reference_type, reference_id=str(reference_id),
         transaction_number=transaction_number, person=person, customer=customer,
-        note=note, reverses=reverses)
+        note=note, reverses=reverses, condition=condition)
 
     transaction.on_commit(lambda: _queue_low_stock_check(product.pk))
     return movement
+
+
+@transaction.atomic
+def change_condition(*, product, location, qty, from_condition, to_condition, user,
+                     reason: str) -> StockConditionChange:
+    """Put pieces on display, mark them damaged, or bring them back to new (D15). Staff at
+    the location, accountants and admins. The location's total stays the same."""
+    _check_qty(qty)
+    _check_condition(from_condition)
+    _check_condition(to_condition)
+    if from_condition == to_condition:
+        raise BusinessRuleError("invalid_condition", "Choose two different conditions.")
+    reason = (reason or "").strip()
+    if not reason:
+        raise BusinessRuleError("reason_required", "Give a reason.")
+    _check_stock_location(location)
+    if not (user.role in (Role.ACCOUNTANT, Role.ADMIN)
+            or user.home_location_id == location.pk):
+        raise BusinessRuleError("wrong_location",
+                                f"You cannot change stock condition at {location.code}.")
+
+    bal = _lock_balances(product, [location])[location.pk]
+    have = bal.available if from_condition == Condition.NEW else bal.count_of(from_condition)
+    if qty > have:
+        raise BusinessRuleError(
+            "insufficient_stock",
+            f"Only {have} {from_condition} {product.code} free at {location.code}.")
+    if from_condition != Condition.NEW:
+        setattr(bal, from_condition, bal.count_of(from_condition) - qty)
+    if to_condition != Condition.NEW:
+        setattr(bal, to_condition, bal.count_of(to_condition) + qty)
+    bal.save(update_fields=["display", "damaged", "updated_at"])
+
+    change = StockConditionChange.objects.create(
+        number=next_number(CONDITION_CHANGE), product=product, location=location, qty=qty,
+        from_condition=from_condition, to_condition=to_condition, reason=reason[:255],
+        person=user)
+    audit_log(actor=user, action="stock_condition_changed", obj=change, reason=reason,
+              after={"product": product.code, "location": location.code, "qty": qty,
+                     "from": from_condition, "to": to_condition})
+    transaction.on_commit(lambda: _queue_low_stock_check(product.pk))
+    return change
 
 
 @transaction.atomic
@@ -218,7 +291,7 @@ def reverse_movement(*, movement, person, reason: str, internal: bool = False) -
         from_location=movement.to_location, to_location=movement.from_location,
         reference_type="reversal", reference_id=movement.number,
         transaction_number=movement.transaction_number, customer=movement.customer,
-        person=person, note=reason[:255], reverses=movement)
+        person=person, note=reason[:255], reverses=movement, condition=movement.condition)
     audit_log(actor=person, action="movement_reversed", obj=movement, reason=reason,
               after={"reversal": reversal.number})
     return reversal
@@ -254,7 +327,7 @@ def receive_goods(*, location, lines, user, reference="", note="",
 
 @transaction.atomic
 def propose_adjustment(*, location, product, qty_delta: int, reason: str, user,
-                       note="") -> StockAdjustment:
+                       note="", condition=Condition.NEW) -> StockAdjustment:
     if not isinstance(qty_delta, int) or isinstance(qty_delta, bool) or qty_delta == 0:
         raise BusinessRuleError("invalid_qty", "The change must be a non-zero whole number.")
     _check_stock_location(location, allow_transit=True)
@@ -262,12 +335,14 @@ def propose_adjustment(*, location, product, qty_delta: int, reason: str, user,
         raise BusinessRuleError("permission_denied", "Salespeople cannot adjust stock.")
     _require_own_location(user, location, "adjust stock")
 
+    _check_condition(condition)
     adjustment = StockAdjustment.objects.create(
         number=next_number(ADJUSTMENT), location=location, product=product,
-        qty_delta=qty_delta, reason=reason, note=note, proposed_by=user)
+        qty_delta=qty_delta, reason=reason, note=note, proposed_by=user, condition=condition)
     audit_log(actor=user, action="adjustment_proposed", obj=adjustment,
               after={"location": location.code, "product": product.code,
-                     "qty_delta": qty_delta, "reason": reason}, reason=note)
+                     "qty_delta": qty_delta, "reason": reason, "condition": condition},
+              reason=note)
     notify("adjustment.proposed", adjustment)
     return adjustment
 
@@ -295,7 +370,7 @@ def approve_adjustment(*, adjustment, user, note="") -> StockAdjustment:
         from_location=adjustment.location if removing else None,
         to_location=None if removing else adjustment.location,
         reference_type="adjustment", reference_id=adjustment.number,
-        transaction_number=adjustment.number, person=user,
+        transaction_number=adjustment.number, person=user, condition=adjustment.condition,
         note=f"{adjustment.reason}: {adjustment.note}"[:255])
     adjustment.status = AdjustmentStatus.APPROVED
     adjustment.decided_by, adjustment.decided_at = user, timezone.now()
@@ -344,13 +419,14 @@ def send_transfer(*, from_location, to_location, lines, user, stock_request=None
         transaction_number=transaction_number or number, stock_request=stock_request,
         sent_by=user, note=note)
     for line in lines:
+        condition = line.get("condition", Condition.NEW)
         StockTransferLine.objects.create(transfer=transfer, product=line["product"],
-                                         qty_sent=line["qty"])
+                                         qty_sent=line["qty"], condition=condition)
         post_movement(product=line["product"], qty=line["qty"],
                       type=MovementType.TRANSFER_OUT, from_location=from_location,
                       to_location=transit, reference_type="transfer", reference_id=number,
                       transaction_number=transfer.transaction_number, person=user,
-                      consume_reservation=consume_reservation)
+                      consume_reservation=consume_reservation, condition=condition)
     notify("transfer.sent", transfer)
     return transfer
 
@@ -365,7 +441,8 @@ def create_transfer(*, from_location, to_location, lines, user, note="") -> Stoc
                              lines=lines, user=user, note=note)
     audit_log(actor=user, action="transfer_sent", obj=transfer,
               after={"from": from_location.code, "to": to_location.code,
-                     "lines": {line["product"].code: line["qty"] for line in lines}})
+                     "lines": [f"{line['qty']} × {line['product'].code} "
+                              f"({line.get('condition', Condition.NEW)})" for line in lines]})
     return transfer
 
 
@@ -401,7 +478,8 @@ def receive_transfer(*, transfer, user, received=None) -> StockTransfer:
             post_movement(product=line.product, qty=qty, type=MovementType.TRANSFER_IN,
                           from_location=transit, to_location=transfer.to_location,
                           reference_type="transfer", reference_id=transfer.number,
-                          transaction_number=transfer.transaction_number, person=user)
+                          transaction_number=transfer.transaction_number, person=user,
+                          condition=line.condition)
         if qty < line.qty_sent:
             shortfalls.append(f"{line.product.code}: sent {line.qty_sent}, received {qty} "
                               f"({line.qty_sent - qty} still in transit)")

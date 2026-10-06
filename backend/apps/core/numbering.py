@@ -14,6 +14,7 @@ ADJUSTMENT = "ADJ"
 PAYMENT = "PAY"
 MOVEMENT = "MV"
 SALES_RETURN = "RET"
+CONDITION_CHANGE = "CC"
 
 
 def next_number(prefix: str) -> str:

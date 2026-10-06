@@ -20,6 +20,7 @@ from apps.inventory.models import (
     MovementType,
     StockAdjustment,
     StockBalance,
+    StockConditionChange,
     StockMovement,
     StockTransfer,
 )
@@ -28,6 +29,7 @@ from apps.locations.models import Location
 from .serializers import (
     AdjustmentSerializer,
     BalanceSerializer,
+    ConditionChangeSerializer,
     DecisionSerializer,
     GoodsReceiptSerializer,
     MovementSerializer,
@@ -42,7 +44,9 @@ DEFAULT_RECEIPT_LOCATION = "PAW"
 
 
 def _lines(validated) -> list[dict]:
-    return [{"product": line["product"], "qty": line["qty"]} for line in validated]
+    return [{"product": line["product"], "qty": line["qty"],
+             **({"condition": line["condition"]} if "condition" in line else {})}
+            for line in validated]
 
 
 def _location_list(locations) -> list[dict]:
@@ -210,7 +214,8 @@ class AdjustmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         data = serializer.validated_data
         serializer.instance = services.propose_adjustment(
             location=data["location"], product=data["product"], qty_delta=data["qty_delta"],
-            reason=data["reason"], note=data.get("note", ""), user=self.request.user)
+            reason=data["reason"], note=data.get("note", ""), user=self.request.user,
+            condition=data.get("condition", "new"))
 
     @extend_schema(request=DecisionSerializer, responses=AdjustmentSerializer)
     @action(detail=True, methods=["post"],
@@ -276,3 +281,29 @@ class TransferViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         transfer = services.receive_transfer(transfer=self.get_object(), user=request.user,
                                              received=received)
         return Response(TransferSerializer(transfer).data)
+
+
+class ConditionChangeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                             mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """Put pieces on display, mark them damaged, or bring them back to new (D15).
+    Staff see and change their own location; accountants and admins all."""
+
+    serializer_class = ConditionChangeSerializer
+    filterset_fields = ["product", "location", "from_condition", "to_condition"]
+    search_fields = ["number", "product__code"]
+
+    def get_queryset(self):
+        qs = StockConditionChange.objects.select_related("product", "location", "person")
+        user = self.request.user
+        if getattr(user, "role", None) in ("accountant", "admin"):
+            return qs
+        if not getattr(user, "home_location_id", None):
+            return qs.none()
+        return qs.filter(location=user.home_location_id)
+
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        serializer.instance = services.change_condition(
+            product=data["product"], location=data["location"], qty=data["qty"],
+            from_condition=data["from_condition"], to_condition=data["to_condition"],
+            reason=data["reason"], user=self.request.user)
