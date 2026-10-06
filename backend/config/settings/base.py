@@ -107,7 +107,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.BotUserAuthentication",
     ),
+    # Reports take ?format=xlsx themselves (4.3); DRF must not treat it as a renderer.
+    "URL_FORMAT_OVERRIDE": None,
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
@@ -139,3 +142,8 @@ CELERY_TASK_ALWAYS_EAGER = False
 
 # Business rules
 MAX_SALESPERSON_DISCOUNT_PCT = config("MAX_SALESPERSON_DISCOUNT_PCT", default=0, cast=int)
+
+# Telegram (Phase 4)
+TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
+BOT_SERVICE_TOKEN = config("BOT_SERVICE_TOKEN", default="")
+WEB_APP_URL = config("WEB_APP_URL", default="")  # where "New sale" in the bot points (D10)
