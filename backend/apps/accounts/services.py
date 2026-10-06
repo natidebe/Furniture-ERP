@@ -2,8 +2,10 @@ import secrets
 
 from django.contrib.auth.models import Permission
 from django.db import transaction
+from django.utils import timezone
 
 from apps.audit.services import audit_log
+from apps.core.exceptions import BusinessRuleError
 
 from .models import ROLE_DEFAULT_PERMISSIONS, ERPPermission, TelegramLinkToken, User
 
@@ -93,3 +95,39 @@ def create_link_code(*, user: User) -> TelegramLinkToken:
         token = "".join(secrets.choice(_LINK_ALPHABET) for _ in range(8))
         if not TelegramLinkToken.objects.filter(token=token).exists():
             return TelegramLinkToken.objects.create(user=user, token=token)
+
+
+@transaction.atomic
+def link_telegram(*, code: str, telegram_id: int) -> User:
+    """/start <code> in the bot: tie this Telegram account to the user who made the code."""
+    token = (TelegramLinkToken.objects.select_for_update().select_related("user")
+             .filter(token=(code or "").strip().upper()).first())
+    if token is None or not token.is_valid or not token.user.is_active:
+        raise BusinessRuleError("invalid_code",
+                                "This code is wrong or expired. Get a new one in the web app.")
+    taken = User.objects.filter(telegram_id=telegram_id).exclude(pk=token.user_id).first()
+    if taken is not None:
+        raise BusinessRuleError("telegram_in_use",
+                                "This Telegram account is linked to another user; ask the "
+                                "admin to unlink it first.")
+    user = token.user
+    before = user.telegram_id
+    user.telegram_id = telegram_id
+    user.save(update_fields=["telegram_id"])
+    token.used_at = timezone.now()
+    token.save(update_fields=["used_at"])
+    audit_log(actor=user, action="telegram_linked", obj=user, source="bot",
+              before={"telegram_id": before}, after={"telegram_id": telegram_id})
+    return user
+
+
+@transaction.atomic
+def unlink_telegram(*, user: User, actor) -> User:
+    if actor.pk != user.pk and actor.role != "admin":
+        raise BusinessRuleError("permission_denied", "Only the admin unlinks someone else.")
+    before = user.telegram_id
+    user.telegram_id = None
+    user.save(update_fields=["telegram_id"])
+    audit_log(actor=actor, action="telegram_unlinked", obj=user,
+              before={"telegram_id": before}, after={"telegram_id": None})
+    return user

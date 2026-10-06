@@ -7,10 +7,15 @@ from apps.accounts.models import ROLE_DEFAULT_PERMISSIONS, ERPPermission, Telegr
 class MeSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="full_name")
     permissions = serializers.SerializerMethodField()
+    telegram_linked = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "username", "name", "role", "home_location", "permissions"]
+        fields = ["id", "username", "name", "role", "home_location", "permissions",
+                  "telegram_linked"]
+
+    def get_telegram_linked(self, user) -> bool:
+        return user.telegram_id is not None
 
     def get_permissions(self, user) -> list[str]:
         return user.effective_erp_permissions()
@@ -61,3 +66,8 @@ class ERPPermissionSerializer(serializers.Serializer):
                                    if p.value in perms]}
             for p in ERPPermission
         ]
+
+
+class TelegramLinkSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=8)
+    telegram_id = serializers.IntegerField(min_value=1)
