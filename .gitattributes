@@ -1,0 +1,5 @@
+# Keep LF everywhere: the code runs in Linux containers.
+* text=auto eol=lf
+*.png binary
+*.xlsx binary
+*.pdf binary

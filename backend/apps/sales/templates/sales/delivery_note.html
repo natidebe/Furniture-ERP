@@ -1,0 +1,81 @@
+{% load humanize %}<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{ note.number }}</title>
+<style>
+  @page { size: A4; margin: 16mm; }
+  /* Abyssinica SIL carries the Ethiopic letters for Ethiopian month names (Q12). */
+  body { font-family: "DejaVu Sans", "Abyssinica SIL", sans-serif; font-size: 10.5pt;
+         color: #000; }
+  .head { display: flex; justify-content: space-between; border-bottom: 2px solid #000;
+          padding-bottom: 6pt; }
+  .company { font-size: 15pt; font-weight: bold; }
+  .txn { font-family: "DejaVu Sans Mono", monospace; font-size: 18pt; font-weight: bold;
+         text-align: right; }
+  .meta { margin: 10pt 0; width: 100%; border-collapse: collapse; }
+  .meta td { padding: 2pt 4pt; vertical-align: top; }
+  .meta .label { color: #444; width: 22%; }
+  table.items { width: 100%; border-collapse: collapse; margin-top: 8pt; }
+  table.items th, table.items td { border: 1px solid #000; padding: 4pt 5pt; }
+  table.items th { background: #eee; text-align: left; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-family: "DejaVu Sans Mono", monospace; }
+  .totals { width: 45%; margin-left: auto; margin-top: 8pt; border-collapse: collapse; }
+  .totals td { padding: 3pt 5pt; }
+  .totals .strong td { font-weight: bold; border-top: 1px solid #000; }
+  .signs { display: flex; justify-content: space-between; margin-top: 40pt; }
+  .sign { width: 30%; border-top: 1px solid #000; padding-top: 4pt; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <div class="company">Delivery Note</div>
+      <div class="mono">{{ note.number }}</div>
+    </div>
+    <div>
+      <div class="txn">{{ order.number }}</div>
+      <div style="text-align:right">Transaction number</div>
+    </div>
+  </div>
+
+  <table class="meta">
+    <tr><td class="label">Date</td><td>{{ issued }}</td>
+        <td class="label">From</td><td>{{ note.location.name }}</td></tr>
+    <tr><td class="label">Customer</td>
+        <td>{{ customer.name }}{% if customer.shop_name %} — {{ customer.shop_name }}{% endif %}</td>
+        <td class="label">Phone / city</td><td>{{ customer.phone }} {{ customer.city }}</td></tr>
+    <tr><td class="label">Salesperson</td><td>{{ order.salesperson.full_name }}</td>
+        <td class="label">Receipt</td>
+        <td>{% if order.receipt_type == "official" %}Official receipt{% else %}Without receipt{% endif %}</td></tr>
+  </table>
+
+  <table class="items">
+    <thead>
+      <tr><th>Code</th><th>Product</th><th class="num">Qty</th>
+          <th class="num">Unit price (ETB)</th><th class="num">Total (ETB)</th></tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr><td class="mono">{{ line.code }}</td><td>{{ line.name }}</td>
+          <td class="num">{{ line.qty }}</td>
+          <td class="num">{{ line.unit_price|floatformat:2|intcomma }}</td>
+          <td class="num">{{ line.total|floatformat:2|intcomma }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Sale total</td><td class="num">{{ order_total|floatformat:2|intcomma }} ETB</td></tr>
+    <tr><td>Paid</td><td class="num">{{ paid|floatformat:2|intcomma }} ETB</td></tr>
+    <tr class="strong"><td>Remaining</td><td class="num">{{ remaining|floatformat:2|intcomma }} ETB</td></tr>
+  </table>
+
+  <div class="signs">
+    <div class="sign">Salesperson</div>
+    <div class="sign">Storekeeper</div>
+    <div class="sign">Customer</div>
+  </div>
+</body>
+</html>
