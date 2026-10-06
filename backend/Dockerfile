@@ -15,6 +15,7 @@ WORKDIR /app
 
 ARG REQUIREMENTS=base.txt
 COPY requirements/ requirements/
+COPY bot/requirements.txt bot/requirements.txt
 RUN pip install -r requirements/${REQUIREMENTS}
 
 COPY . .
