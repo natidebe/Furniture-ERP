@@ -32,7 +32,9 @@ backend/
 │   ├── __init__.py
 │   │
 │   ├── core/                         # Phase 1 — shared base pieces
-│   │   ├── models.py                 # TimeStampedModel, ActiveModel, DocumentSequence
+│   │   ├── models.py                 # TimeStampedModel, ActiveModel, DocumentSequence, SystemSettings
+│   │   ├── services.py               # get_settings(), update_settings()
+│   │   ├── api/                      # /settings/
 │   │   ├── numbering.py              # next_number("SO") → SO-2026-00125
 │   │   ├── exceptions.py             # BusinessRuleError + DRF exception handler
 │   │   ├── views.py                  # GET /health/
@@ -108,9 +110,10 @@ backend/
 │   │                                 # close)
 │   │
 │   ├── sales/                        # Phase 3 — orders and delivery notes
-│   │   ├── models.py                 # SalesOrder(+Line), DeliveryNote(+Line)
+│   │   ├── models.py                 # SalesOrder(+Line), DeliveryNote(+Line), SalesReturn(+Line)
 │   │   ├── services.py               # create_order(), confirm_order(), release_from_branch(),
-│   │   │                             # cancel_order(), return_goods(), void_order(), ...
+│   │   │                             # cancel_order(), return_goods(), void_order(),
+│   │   │                             # request_stock_for_order(), on_transfer_received(), ...
 │   │   ├── selectors.py
 │   │   ├── pdf.py                    # Delivery note PDF (WeasyPrint)
 │   │   ├── templates/sales/

@@ -77,7 +77,7 @@ Every document has a number: `SO-2026-00125` (sale), `DN-` (delivery note), `SR-
 | Object | Statuses (in order) |
 | --- | --- |
 | Stock request | Pending · Acknowledged · Partially released · Released · Closed · Rejected · Cancelled |
-| Sale (fulfilment) | Draft · Pending · Confirmed · Prepared · Released · Completed · Cancelled · Voided |
+| Sale (fulfilment) | Draft · Pending · Confirmed · Prepared · Partially released · Released · Cancelled · Voided |
 | Sale (payment) | Unpaid · Partial · Paid |
 | Payment | Unverified · Verified · Rejected · Reversed |
 | Transfer | In transit · Received (+ "Short" warning when less arrived than was sent) |
@@ -397,13 +397,13 @@ The most-used screen. It must be fast at the counter.
 ### P-42 Sale detail — P3
 
 - **Header:** SO number, status chips, customer (link), branch, salesperson, channel, receipt type, dates; "Replaces SO-…" / "Replaced by SO-…" when voided and re-issued.
-- **Lines:** product, qty, unit price, discount, line total, source, released, **paid for this line**.
+- **Lines:** product, qty, unit price, discount, line total, source, released, **held at the branch** (arrived from Pawlos, waiting for the customer), returned, **paid for this line**.
 - **Totals box:** total · paid · remaining.
 - **Payments:** date, PAY number, amount, **Organization/Personal**, account, status, recorded by (the client's example table). Personal amounts follow `view_personal_payments`.
 - **Delivery notes and stock requests** linked to this sale.
 - **History** tab = P-05.
-- **Actions (by status and permission):** Edit (draft/pending only), Confirm, Record payment (P-50), Release from branch (after goods arrive), Mark prepared / Mark released (phone orders), Cancel (before any release, reason), Return goods (P-45), **Void** (`correct_transactions`, reason), Print delivery note.
-- **API:** `GET /orders/{id}/`, `GET /orders/{id}/payments/`, `GET /orders/{id}/history/`, `POST …/confirm/`, `…/release-from-branch/`, `…/status/`, `…/cancel/`, `…/return/`, `…/void/`.
+- **Actions (by status and permission):** Edit (draft/pending only), Confirm, Record payment (P-50), **Hand over at branch** (goods held for the sale first, then free branch stock), **Request remaining stock** (after a rejected or short request), Mark prepared (storekeeper), Cancel (before any handover, reason), Return goods (P-45), **Void** (`correct_transactions`, reason), Print each delivery note.
+- **API:** `GET /orders/{id}/`, `GET /orders/{id}/payments/`, `GET /orders/{id}/history/`, `POST …/confirm/`, `…/release-from-branch/ {lines:[{line_id, qty}]}`, `…/request-stock/ {lines}`, `…/status/`, `…/cancel/ {reason}`, `…/return/ {location, reason, lines}`, `…/void/ {reason}`; `PATCH /orders/{id}/` while draft/pending.
 
 ### P-43 Delivery note (print / PDF) — P3
 
@@ -411,7 +411,8 @@ Replaces the 3-copy paper pad (copies: storekeeper, accountant, pad).
 
 - **Layout:** company header, **transaction (SO) number in large type**, DN number, date, customer (name, shop, phone, city), table (code, product, qty, unit price, total), payment summary (total, paid, remaining), three signature lines: salesperson, storekeeper, customer. [Q10: VAT fields; Q13: match the current paper — get a photo of it.]
 - A4 portrait, black and white friendly. Also viewable on screen.
-- **API:** `GET /orders/{id}/delivery-note.pdf`.
+- A sale can have several delivery notes — one per handover (at the branch, or the customer's pickup at Pawlos).
+- **API:** `GET /delivery-notes/?order={id}`, `GET /delivery-notes/{id}/pdf/`.
 
 ### P-44 Phone orders board — P3
 

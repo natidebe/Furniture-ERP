@@ -625,19 +625,19 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 
 ### 3.1 `customers` app
 
-- [ ] The model and walk-in migration were created in Phase 2.1. Here, add the selectors and endpoints.
-- [ ] `Customer(ActiveModel)`: `name`, `phone` (indexed), `shop_name`, `city`, `type` (`walk_in` / `reseller` / `out_of_city`), `credit_allowed` (bool, default False), `credit_limit` (Decimal, nullable = no limit), `notes`.
-- [ ] Data migration (Phase 2.1): one shared customer "Walk-in Customer" (`type=walk_in`) for anonymous cash sales.
-- [ ] Phone uniqueness: warn on duplicates (soft), do not block — resellers may share a number.
-- [ ] Selectors `apps/customers/selectors.py`:
+- [x] The model and walk-in migration were created in Phase 2.1. Here, add the selectors and endpoints.
+- [x] `Customer(ActiveModel)`: `name`, `phone` (indexed), `shop_name`, `city`, `type` (`walk_in` / `reseller` / `out_of_city`), `credit_allowed` (bool, default False), `credit_limit` (Decimal, nullable = no limit), `notes`.
+- [x] Data migration (Phase 2.1): one shared customer "Walk-in Customer" (`type=walk_in`) for anonymous cash sales.
+- [x] Phone uniqueness: warn on duplicates (soft), do not block — resellers may share a number.
+- [x] Selectors `apps/customers/selectors.py`:
   - `customer_balance(customer)` → `{"total_purchases", "total_paid", "outstanding", "advance"}`
   - `customer_statement(customer, date_from, date_to)` → chronological rows (order = debit, payment = credit) with a running balance
-- [ ] Endpoints: `GET/POST/PATCH /api/v1/customers/?search=&type=&city=` (search over name, phone, shop name), `GET /customers/{id}/balance/`, `GET /customers/{id}/statement/`. Salespeople can create customers. Only users with `approve_credit` can change `credit_allowed` and `credit_limit`; the serializer makes those fields read-only for everyone else.
-- [ ] The statement shows every payment with its date and account kind (Organization / Personal), as the client's "ABC Furniture" example asks. Personal amounts follow the `view_personal_payments` rule in 3.3.
+- [x] Endpoints: `GET/POST/PATCH /api/v1/customers/?search=&type=&city=` (search over name, phone, shop name), `GET /customers/{id}/balance/`, `GET /customers/{id}/statement/`. Salespeople can create customers. Only users with `approve_credit` can change `credit_allowed` and `credit_limit`; the serializer makes those fields read-only for everyone else.
+- [x] The statement shows every payment with its date and account kind (Organization / Personal), as the client's "ABC Furniture" example asks. Personal amounts follow the `view_personal_payments` rule in 3.3.
 
 ### 3.2 `sales` app — orders and delivery notes
 
-- [ ] `SalesOrder(TimeStampedModel)`:
+- [x] `SalesOrder(TimeStampedModel)`:
   - `number` (SO-…): **the master transaction number (D4)**. It is printed on the delivery note and stored as `transaction_number` on every related request, release, transfer and movement.
   - `customer`, `branch` (Location), `salesperson`, `channel` (`walk_in` / `phone`)
   - `fulfillment_status`: `draft` → `pending` → `confirmed` → `prepared` → `released` → `completed`, or `cancelled` (before any release) or `voided` (a correction after release, D6). Phone orders follow the client's Pending → Confirmed → Prepared → Released.
@@ -645,9 +645,9 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
   - `receipt_type`: `official` / `none`. This is the "payment type" the salesperson picks at the sale (official receipt vs without receipt). "Credit" is whatever stays unpaid after confirmation.
   - `total_amount` (Decimal, computed from lines on save), `notes`, `confirmed_at`, `cancelled_reason`
   - `replaces` (FK self, nullable): the voided order this one corrects; `voided_by`, `voided_at`, `void_reason`
-- [ ] `SalesOrderLine`: `order`, `product`, `qty`, `unit_price` (snapshot copied from product at creation), `discount` (Decimal, default 0), `line_total` (= qty × unit_price − discount), `source_location`, `qty_released` (default 0).
-- [ ] `DeliveryNote`: `number` (DN-…), `order`, `location`, `issued_by`, `issued_at`; `DeliveryNoteLine`: `product`, `qty`.
-- [ ] Services `apps/sales/services.py`:
+- [x] `SalesOrderLine`: `order`, `product`, `qty`, `unit_price` (snapshot copied from product at creation), `discount` (Decimal, default 0), `line_total` (= qty × unit_price − discount), `source_location`, `qty_released` (default 0).
+- [x] `DeliveryNote`: `number` (DN-…), `order`, `location`, `issued_by`, `issued_at`; `DeliveryNoteLine`: `product`, `qty`.
+- [x] Services `apps/sales/services.py`:
   - `create_order(customer, branch, lines, salesperson, channel, receipt_type, notes, payment=None, replaces=None)` → status `draft` (walk-in) or `pending` (phone). Unit prices always come from the product via `price_for(product, customer)` — the wholesale price for resellers (D11) — never from the request body. An optional `payment` (same fields as `record_payment`) is recorded in the same transaction, so a walk-in sale with immediate payment is one step.
   - `update_draft_order(order, lines, user)` → only while `draft` / `pending`.
   - `confirm_order(order, user)`:
@@ -666,21 +666,21 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
     4. writes an audit entry.
 
     The corrected sale is then created with `create_order(..., replaces=voided_order)`, and the advance is allocated to it. Both orders show the link in their history.
-- [ ] Discount rule (D13): salesperson discounts above the limit require `approve_discounts`. The limit is a **system setting the owner edits** (stored in the database, audited, shown on a Settings page — `GET/PATCH /api/v1/settings/`, admin only), starting at 0%. `MAX_SALESPERSON_DISCOUNT_PCT` in the environment is only the starting value.
-- [ ] Reseller prices (D11): `unit_price` is snapshotted from `price_for(product, customer)` when the line is created; changing the customer on a draft re-prices its lines. Tests: a reseller order uses wholesale prices; a walk-in order uses selling prices; a later price change does not alter the order.
-- [ ] Delivery note PDF: `apps/sales/pdf.py` renders `apps/sales/templates/sales/delivery_note.html` with WeasyPrint. Layout: company header, **order (transaction) number** in large type, DN number, date, customer, table (code, product, qty, unit price, total), payment summary, three signature lines (salesperson, storekeeper, customer).
+- [x] Discount rule (D13): salesperson discounts above the limit require `approve_discounts`. The limit is a **system setting the owner edits** (stored in the database, audited, shown on a Settings page — `GET/PATCH /api/v1/settings/`, admin only), starting at 0%. `MAX_SALESPERSON_DISCOUNT_PCT` in the environment is only the starting value.
+- [x] Reseller prices (D11): `unit_price` is snapshotted from `price_for(product, customer)` when the line is created; changing the customer on a draft re-prices its lines. Tests: a reseller order uses wholesale prices; a walk-in order uses selling prices; a later price change does not alter the order.
+- [x] Delivery note PDF: `apps/sales/pdf.py` renders `apps/sales/templates/sales/delivery_note.html` with WeasyPrint. Layout: company header, **order (transaction) number** in large type, DN number, date, customer, table (code, product, qty, unit price, total), payment summary, three signature lines (salesperson, storekeeper, customer).
 
 ### 3.3 `payments` app
 
-- [ ] `PaymentAccount(ActiveModel)`: `name`, `kind` (`organization` / `personal`), `method` (`bank` / `cash` / `mobile_money`), `bank_name`, `account_number`, `owner_name`. Register `simple_history` on it.
-- [ ] `Payment(TimeStampedModel)`: `number` (PAY-…), `customer`, `account`, `amount`, `method`, `receipt_number` (nullable, indexed for search), `paid_at`, `recorded_by`, `status` (`unverified` / `verified` / `rejected` / `reversed`), `verified_by`, `verified_at`, `reversal_reason`, `replaces` (FK self, nullable: the reversed payment this one corrects), `note`.
-- [ ] Payment account rules (D3):
+- [x] `PaymentAccount(ActiveModel)`: `name`, `kind` (`organization` / `personal`), `method` (`bank` / `cash` / `mobile_money`), `bank_name`, `account_number`, `owner_name`. Register `simple_history` on it.
+- [x] `Payment(TimeStampedModel)`: `number` (PAY-…), `customer`, `account`, `amount`, `method`, `receipt_number` (nullable, indexed for search), `paid_at`, `recorded_by`, `status` (`unverified` / `verified` / `rejected` / `reversed`), `verified_by`, `verified_at`, `reversal_reason`, `replaces` (FK self, nullable: the reversed payment this one corrects), `note`.
+- [x] Payment account rules (D3):
   - An **official-receipt** order accepts allocations only from **Organization** payments, and those need a `receipt_number`.
   - A **Personal** payment never has a `receipt_number`.
   - A no-receipt order accepts both kinds, as in the 100,000 ETB example (confirmed by the owner, Q14).
   - Each Organization payment on an official-receipt sale carries its own receipt number (one receipt per payment, Q14).
-- [ ] `PaymentAllocation`: `payment`, `order`, `order_line` (nullable), `amount`, `is_active` (False after reversal).
-- [ ] Services `apps/payments/services.py`:
+- [x] `PaymentAllocation`: `payment`, `order`, `order_line` (nullable), `amount`, `is_active` (False after reversal).
+- [x] Services `apps/payments/services.py`:
 
 ```python
 @transaction.atomic
@@ -745,27 +745,27 @@ def _allocate(*, payment, order_id, amount, line_id=None):
   - `verify_payment(payment, user)` / `reject_payment(payment, user, reason)` → `verify_payments`; rejected payments deactivate their allocations.
   - `reverse_payment(payment, user, reason)` → `correct_payments`; status `reversed`, allocations `is_active=False`, refresh order statuses, audit log. Never delete.
   - `correct_payment(payment, user, reason, **corrected_fields)` → `correct_payments`; reverses the payment and records the corrected one with `replaces=payment` in the same transaction (D6). Use it for a wrong amount, account, date or receipt number.
-- [ ] Visibility: Personal-account payments (amounts, lists, totals) are shown to users with `view_personal_payments` — every staff member by default (D12) — and always to the salesperson who recorded them. A user the admin removed it from sees the payment's existence and status, without the amount or account.
-- [ ] Every payment's history shows who recorded it, the amount, the account, the date and time, and the related sale and customer, plus every verify, reject, reverse and correct step and who did it (the "Important Permission" requirement).
+- [x] Visibility: Personal-account payments (amounts, lists, totals) are shown to users with `view_personal_payments` — every staff member by default (D12) — and always to the salesperson who recorded them. A user the admin removed it from sees the payment's existence and status, without the amount or account.
+- [x] Every payment's history shows who recorded it, the amount, the account, the date and time, and the related sale and customer, plus every verify, reject, reverse and correct step and who did it (the "Important Permission" requirement).
   - `refresh_payment_status(order)` → sets `unpaid` / `partial` / `paid` from active allocations.
-- [ ] Selectors: `order_paid(order)`, `order_remaining(order)`, `line_paid(line)`, `line_remaining(line)`, `payment_unallocated(payment)`.
-- [ ] Balance rules (put these in the code as docstrings):
+- [x] Selectors: `order_paid(order)`, `order_remaining(order)`, `line_paid(line)`, `line_remaining(line)`, `payment_unallocated(payment)`.
+- [x] Balance rules (put these in the code as docstrings):
   - Order paid = sum of active allocations (unverified included, flagged in the UI).
   - Order remaining = order total − order paid.
   - Customer outstanding = sum of confirmed (not cancelled, not voided) order totals − sum of non-reversed, non-rejected payments.
   - Unallocated payment money = customer advance.
-- [ ] Data migration placeholder for payment accounts; real accounts are entered by the admin once the client lists them.
+- [x] Data migration placeholder for payment accounts; real accounts are entered by the admin once the client lists them.
 
 ### 3.4 Search and transaction history (`reports` app)
 
 The client asks that every transaction "remain searchable later" and that search be "very easy".
 
-- [ ] `apps/reports/search.py::search(q, user, filters)` → grouped results, each limited to what `user` may see:
+- [x] `apps/reports/search.py::search(q, user, filters)` → grouped results, each limited to what `user` may see:
   - **products** by code or name: name, code, price, stock per location, total (the client's `VC-001` card). An exact code match comes first.
   - **customers** by name, phone or shop name, with their outstanding balance
   - **orders** by SO number; **delivery notes** by DN number; **stock requests** by SR number; **payments** by PAY number or receipt number
   - filters: `salesperson`, `from`, `to`, `branch`
-- [ ] `apps/reports/history.py::transaction_history(number, user)` → takes *any* related number (SO, DN, SR, SRL, TR, MV, PAY) and resolves it to the master transaction. Returns:
+- [x] `apps/reports/history.py::transaction_history(number, user)` → takes *any* related number (SO, DN, SR, SRL, TR, MV, PAY) and resolves it to the master transaction. Returns:
   - a header: customer, products and codes, quantities, salesperson, source, destination, payment summary, status
   - a chronological event list: created, confirmed, requested, acknowledged, released, transferred, received, delivery note issued, payment recorded / verified / rejected / reversed / corrected, voided, re-issued. Each event shows who, when and the reason.
 
@@ -778,13 +778,15 @@ The client asks that every transaction "remain searchable later" and that search
 | `GET/POST /api/v1/orders/` | salesperson (own orders only, D9), accountant, admin | Filters: number, status, payment_status, customer, branch, salesperson, date |
 | `GET/PATCH /api/v1/orders/{id}/` | same | PATCH only while draft / pending |
 | `POST /api/v1/orders/{id}/confirm/` | salesperson, accountant, admin | Beyond credit rules needs `approve_credit` |
-| `POST /api/v1/orders/{id}/release-from-branch/` | salesperson (own branch), admin | |
-| `POST /api/v1/orders/{id}/status/` | storekeeper (prepared), sales staff | Body: `{"status": "prepared"}` |
-| `POST /api/v1/orders/{id}/cancel/` · `/return/` | owner before release / accountant, admin | |
+| `POST /api/v1/orders/{id}/release-from-branch/` | staff at the order's branch, accountant, admin | Hands over goods held for the sale first, then free branch stock |
+| `POST /api/v1/orders/{id}/request-stock/` | order's salesperson, accountant, admin | Asks the warehouse again for units nothing is bringing yet (after a rejected or short request) |
+| `POST /api/v1/orders/{id}/status/` | storekeeper of a warehouse supplying the sale, admin | Body: `{"status": "prepared"}` |
+| `POST /api/v1/orders/{id}/cancel/` | order's salesperson, accountant, admin | Before any handover; reason required |
+| `POST /api/v1/orders/{id}/return/` | accountant, admin | Body: `{location, reason, lines:[{line_id, qty}]}` [Q7] |
 | `POST /api/v1/orders/{id}/void/` | `correct_transactions` | Body: `{"reason": "..."}`; re-issue with `POST /orders/` and `"replaces": <id>` |
 | `GET /api/v1/orders/{id}/history/` | same as order read | The transaction history (3.4) |
 | `GET /api/v1/orders/{id}/payments/` | sales staff | Payment history with account kind and recorder |
-| `GET /api/v1/orders/{id}/delivery-note.pdf` | sales staff, storekeeper | |
+| `GET /api/v1/delivery-notes/` · `/{id}/` · `/{id}/pdf/` | anyone who can see the sale | A sale can have several delivery notes (one per handover) |
 | `GET/POST /api/v1/payments/` | salesperson (own), accountant, admin | Filters: number, receipt_number, account, account_kind, status, customer, order, salesperson, branch, from, to. Personal amounts need `view_personal_payments` |
 | `POST /api/v1/payments/{id}/allocate/` · `/allocate-oldest-first/` | accountant, admin | |
 | `POST /api/v1/payments/{id}/verify/` · `/reject/` | `verify_payments` | |
@@ -792,6 +794,8 @@ The client asks that every transaction "remain searchable later" and that search
 | `GET /api/v1/search/?q=&salesperson=&branch=&from=&to=` | all staff | 3.4; results filtered by permissions |
 | `GET /api/v1/transactions/{number}/` | all staff (own only for salespeople) | 3.4; any related number |
 | `GET/POST/PATCH /api/v1/payment-accounts/` | read: staff; write: admin | Salespeople only see accounts they are allowed to use |
+| `GET/POST/PATCH /api/v1/customers/` · `/{id}/balance/` · `/{id}/statement/?from=&to=` | salespeople, accountant, admin | Credit fields need `approve_credit`; a shared phone gives a warning |
+| `GET /api/v1/settings/` · `PATCH` | read: all staff; write: admin | The salesperson discount limit (D13) |
 
 Example `POST /api/v1/payments/` body:
 
@@ -829,33 +833,46 @@ Example `GET /api/v1/orders/125/payments/` response:
 }
 ```
 
+### 3.5a Implementation notes (where the code differs from the plan above, and why)
+
+- **Goods for a sale are held at the branch.** When a transfer for a sale arrives, its units are reserved at the branch for that customer (`qty_awaiting`); otherwise another sale could take them. `release_from_branch` hands those over first. `rebuild_stock_balances` counts these holds.
+- **Payments may be taken before confirmation.** The plan's `_allocate` refused draft orders, which would make a walk-in sale (no credit) impossible: it must be paid before it is confirmed. Only cancelled and voided sales refuse payments.
+- **A sale's stock request carries the sale's authority**, so an accountant can confirm a sale that needs Pawlos stock. `request_stock_for_order` asks again for units nothing is bringing (after a rejection or a short transfer).
+- **Fulfilment statuses:** `draft`, `pending`, `confirmed`, `prepared`, `partially_released`, `released`, `cancelled`, `voided`. There is no separate `completed`: payment has its own status.
+- **Sources:** a line comes from the branch or its sub-stores (sold on confirmation) or from a releasing warehouse (a stock request). One line per product per sale.
+- **Customer balance:** `total_purchases`, `total_paid`, `outstanding`, `prepaid` (paid beyond purchases) and `unallocated` (payment money not yet tied to a sale). Statement rows hide a Personal payment's amount from a user without `view_personal_payments`; totals still include it.
+- **Returns** have their own document (`RET-`) with amounts computed cumulatively, so a fully returned line gives back exactly its line total. If paid money exceeds the new total, the newest allocations shrink and the money becomes advance. A sale with returns cannot be voided.
+- **Corrections:** `correct_payment` carries the old allocations over up to the new amount. A receipt number is unique among valid payments (a database rule), so a correction may reuse the reversed payment's receipt.
+- **Salespeople** take payments only for their own sales, to accounts the admin allowed them (`allowed_payment_accounts`, set on the user). Storekeepers record no payments.
+- **Delivery notes:** one per handover (branch confirmation, branch handover, or Pawlos pickup), PDF at `/delivery-notes/{id}/pdf/`.
+
 ### 3.6 Phase 3 tests
 
-- [ ] **Client example:** order 100,000 → pay 40,000 Organization → pay 20,000 Personal → paid 60,000, remaining 40,000, status `partial`, two history rows with correct kinds.
-- [ ] **Per-item payment:** order with chairs 50,000 + desks 40,000 + cabinet 20,000 → pay 50,000 to the chairs line → chairs line paid, desks and cabinet unpaid, order remaining 60,000.
-- [ ] Allocation above the line or order remaining is refused.
-- [ ] Over-allocating a payment is refused; leftover becomes an advance and can be allocated later.
-- [ ] Salesperson cannot use an account outside `allowed_payment_accounts`.
-- [ ] Official-receipt order + Organization account without a receipt number is refused.
-- [ ] Official-receipt order + Personal account is refused (`official_needs_organization`).
-- [ ] A Personal payment with a receipt number is refused (`receipt_on_personal`).
-- [ ] A no-receipt order accepts both Organization and Personal payments (the client's example).
-- [ ] `correct_payment` leaves the old payment `reversed`, creates the new one with `replaces`, and the order balance reflects only the new one.
-- [ ] Verify, reject, reverse and correct without the matching permission return 403, even for an accountant whose permission was removed.
-- [ ] A user without `view_personal_payments` never sees Personal amounts in payment lists, order payment history, customer statements or search.
-- [ ] Reversing a payment restores the remaining balance and keeps the payment row.
-- [ ] Customer `credit_allowed=False` → salesperson cannot confirm an order with a balance; accountant can.
-- [ ] Credit limit exceeded → refused for salesperson.
-- [ ] Unit price is taken from the product even if the request body sends another price.
-- [ ] Price change after an order does not alter that order.
-- [ ] Cancel after release is refused; return goods updates stock and customer balance.
-- [ ] `void_order` restores stock at the original locations, removes the order from the customer balance, turns its allocations into advance, and needs `correct_transactions`. The re-issued order links to it, and the advance can be allocated to it.
-- [ ] A salesperson sees only their own orders and payments.
-- [ ] Search finds a transaction by product code, product name, customer name, customer phone, SO, DN, SR and PAY number, receipt number, salesperson and date.
-- [ ] `transaction_history` returns the same timeline from the SO, DN, SR, MV and PAY numbers of one transaction, including voids and corrections.
-- [ ] `allocate_oldest_first` pays the oldest open orders first and leaves the rest as advance.
-- [ ] Customer statement running balance equals `customer_balance().outstanding`.
-- [ ] Delivery note PDF renders and contains the DN number and all lines.
+- [x] **Client example:** order 100,000 → pay 40,000 Organization → pay 20,000 Personal → paid 60,000, remaining 40,000, status `partial`, two history rows with correct kinds.
+- [x] **Per-item payment:** order with chairs 50,000 + desks 40,000 + cabinet 20,000 → pay 50,000 to the chairs line → chairs line paid, desks and cabinet unpaid, order remaining 60,000.
+- [x] Allocation above the line or order remaining is refused.
+- [x] Over-allocating a payment is refused; leftover becomes an advance and can be allocated later.
+- [x] Salesperson cannot use an account outside `allowed_payment_accounts`.
+- [x] Official-receipt order + Organization account without a receipt number is refused.
+- [x] Official-receipt order + Personal account is refused (`official_needs_organization`).
+- [x] A Personal payment with a receipt number is refused (`receipt_on_personal`).
+- [x] A no-receipt order accepts both Organization and Personal payments (the client's example).
+- [x] `correct_payment` leaves the old payment `reversed`, creates the new one with `replaces`, and the order balance reflects only the new one.
+- [x] Verify, reject, reverse and correct without the matching permission return 403, even for an accountant whose permission was removed.
+- [x] A user without `view_personal_payments` never sees Personal amounts in payment lists, order payment history, customer statements or search.
+- [x] Reversing a payment restores the remaining balance and keeps the payment row.
+- [x] Customer `credit_allowed=False` → salesperson cannot confirm an order with a balance; accountant can.
+- [x] Credit limit exceeded → refused for salesperson.
+- [x] Unit price is taken from the product even if the request body sends another price.
+- [x] Price change after an order does not alter that order.
+- [x] Cancel after release is refused; return goods updates stock and customer balance.
+- [x] `void_order` restores stock at the original locations, removes the order from the customer balance, turns its allocations into advance, and needs `correct_transactions`. The re-issued order links to it, and the advance can be allocated to it.
+- [x] A salesperson sees only their own orders and payments.
+- [x] Search finds a transaction by product code, product name, customer name, customer phone, SO, DN, SR and PAY number, receipt number, salesperson and date.
+- [x] `transaction_history` returns the same timeline from the SO, DN, SR, MV and PAY numbers of one transaction, including voids and corrections.
+- [x] `allocate_oldest_first` pays the oldest open orders first and leaves the rest as advance.
+- [x] Customer statement running balance equals `customer_balance().outstanding`.
+- [x] Delivery note PDF renders and contains the DN number and all lines.
 
 ### 3.7 Definition of done
 
