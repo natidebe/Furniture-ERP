@@ -2,7 +2,7 @@
 
 **For:** the designer and the frontend developer.
 **Based on:** `userequirements.md`, the decisions D1–D10 in `BUILD_PHASES.md`, and the backend API in `backend/`.
-**Last updated:** 5 Oct 2026
+**Last updated:** 6 Oct 2026 (owner's answers to Q6, Q8, Q9, Q11, Q14, Q15, Q20)
 
 Every page below lists who uses it, what it shows, what the user can do, the rules the screen must respect, and the API it calls. **Phase** says when the backend for it exists:
 
@@ -46,13 +46,13 @@ The bot (Telegram) only notifies and does quick actions. **All selling and payme
 
 | Permission | Shows / enables |
 | --- | --- |
-| `view_personal_payments` | Personal-account amounts, totals and report columns. Without it: show the payment exists and its status, with amount and account hidden (show "—"). |
+| `view_personal_payments` | Personal-account amounts, totals and report columns. **Every staff member has it by default (D12)**; the admin can remove it from one user — then show the payment exists and its status, with amount and account hidden (show "—"). |
 | `verify_payments` | Verify / Reject buttons on payments |
 | `correct_payments` | Reverse / Correct buttons on payments |
 | `correct_transactions` | Void sale; Reverse movement |
 | `approve_adjustments` | Approve / Reject on stock adjustments |
 | `approve_credit` | Can confirm a sale beyond a customer's credit rules; can edit a customer's credit settings |
-| `approve_discounts` | Discounts above the salesperson limit |
+| `approve_discounts` | Discounts above the salesperson limit the owner sets in Settings (P-84) |
 | `export_reports` | **Export Excel** buttons |
 
 Admins have every permission.
@@ -172,6 +172,7 @@ Suggested colour meaning: grey = not started, blue = in progress, green = done, 
 | P-81 | Locations | admin | Ready |
 | P-82 | Payment accounts | admin | P3 |
 | P-83 | Audit log | accountant, admin | Ready |
+| P-84 | Settings (discount limit) | admin | P3 |
 
 ---
 
@@ -230,7 +231,7 @@ The digital version of "the same delivery paper everyone tracks". Opened from an
 
 ### P-10 Products list — Ready
 
-- **Columns:** code, name, category, unit, selling price, min stock, total stock (optional, from P-20), active.
+- **Columns:** code, name, category, unit, selling price, **wholesale price** (what resellers pay; empty = same as selling), min stock, total stock (optional, from P-20), active.
 - **Filters:** search (code or name), category, active/inactive. Sort by code, name, price.
 - **Actions:** row → P-11. Admin: **New product**, **Import products**.
 - **No cost price column (D1).**
@@ -238,24 +239,24 @@ The digital version of "the same delivery paper everyone tracks". Opened from an
 
 ### P-11 Product detail — Ready
 
-- **Shows:** code, name, category, unit, price, min stock, description, active.
+- **Shows:** code, name, category, unit, selling price, wholesale price, min stock, description, active.
 - **Stock card:** per location on hand / reserved / available, In transit, Total, low-stock warning when total < min stock.
-- **Price history:** date, old price, new price, changed by, reason.
+- **Price history:** date, **which price** (selling / wholesale), old price, new price, changed by, reason.
 - **Recent movements** (for storekeeper/accountant/admin): date, type, qty, from → to, transaction number.
 - **Admin actions:** Edit, Change price, Deactivate.
 - **API:** `GET /products/{id}/`, `GET /products/{id}/stock/`, `GET /products/{id}/price-history/`, `GET /stock/movements/?product={id}`.
 
 ### P-12 Product create / edit — Ready (admin)
 
-- **Fields:** code (stored in capitals; must be unique), name, category, unit, selling price (create only), min stock, description, active.
-- **Rules:** on edit, the price is **read-only** with a **Change price** button next to it (P-13). Price must be > 0.
+- **Fields:** code (stored in capitals; must be unique), name, category, unit, selling price and wholesale price (both create only; wholesale optional), min stock, description, active.
+- **Rules:** on edit, both prices are **read-only** with a **Change price** button next to each (P-13). Prices must be > 0; the wholesale price cannot be higher than the selling price (error code `wholesale_above_selling`).
 - **API:** `POST /products/`, `PATCH /products/{id}/`.
 
 ### P-13 Change price (dialog) — Ready (admin)
 
-- **Fields:** current price (read-only), new price, reason (optional but encouraged).
-- **Rules:** new price > 0 and different from the current price. Old sales keep their old price — say so in the dialog.
-- **API:** `POST /products/{id}/change-price/ {new_price, reason}`.
+- **Fields:** which price (selling / wholesale), current value (read-only), new price, reason (optional but encouraged).
+- **Rules:** new price > 0 and different from the current one; wholesale never above selling (lowering the selling price below the wholesale price is refused — lower the wholesale price first). Old sales keep their old price — say so in the dialog.
+- **API:** `POST /products/{id}/change-price/ {price_type: "selling"|"wholesale", new_price, reason}`.
 
 ### P-14 Import products — Ready as a server command
 
@@ -376,14 +377,14 @@ The most-used screen. It must be fast at the counter.
 
 1. **Customer:** search by name/phone/shop, or **Walk-in customer** (one click), or **+ New customer** (P-62 in a side panel). Show the customer's credit status and outstanding balance.
 2. **Channel:** Walk-in or Phone order.
-3. **Lines:** product search by code/name → for each product show price and **stock at my branch and at Pawlos**. Quantity. **Source:** "From this branch" (taken now) or "From Pawlos" (creates a stock request when the sale is confirmed). Unit price comes from the product and **cannot be typed**. Discount per line (limit [Q6]; above it needs `approve_discounts`).
+3. **Lines:** product search by code/name → for each product show the price **for this customer** (wholesale for resellers, D11 — label it "Wholesale") and **stock at my branch and at Pawlos**. Quantity. **Source:** "From this branch" (taken now) or "From Pawlos" (creates a stock request when the sale is confirmed). Unit price comes from the product and **cannot be typed**. Discount per line (limit set by the owner in Settings, P-84; above it needs `approve_discounts`).
 4. **Receipt type** ("payment type"): **Official receipt** or **Without receipt**.
-5. **Payment now (optional):** amount, account (only accounts this user may use; Organization/Personal clearly marked), method, receipt number (required for official receipt + Organization; not allowed for Personal), pay for specific lines (optional). [Q14]
+5. **Payment now (optional):** amount, account (only accounts this user may use; Organization/Personal clearly marked; an official-receipt sale offers **only Organization accounts**), method, receipt number (required for official receipt + Organization — one per payment; not allowed for Personal), pay for specific lines (optional).
 6. **Totals:** total, paid now, remaining (= credit).
 7. **Confirm sale.** If the customer has no credit or the remaining balance is over their limit, block with a clear message unless the user has `approve_credit`. [Q11]
 
 - **After confirm:** show the SO number large, the delivery note button (P-43), and what happens next ("15 × VC-001 requested from Pawlos — SR-…").
-- **Rules:** official-receipt sales accept only Organization payments, with a receipt number (D3). [Q14]
+- **Rules:** official-receipt sales accept only Organization payments, each with its own receipt number (D3, confirmed by the owner).
 - **API:** `POST /orders/ {…, payment?}`, `POST /orders/{id}/confirm/`.
 
 ### P-41 Sales / orders list — P3
@@ -430,7 +431,7 @@ For out-of-city orders (Jimma, Bahir Dar, Mekele…): **Pending → Confirmed �
 Opened from a sale, from a customer, or from the menu.
 
 - **Fields:** customer, amount, account (salespeople: only their allowed accounts), method (bank / cash / mobile money), receipt number (only for Organization; required for official-receipt sales), date-time paid, note.
-- **Allocation:** pay specific sales and/or specific lines ("For: 10 chairs"); the rest stays as customer credit (advance). Show each open sale's remaining and each line's remaining. [Q20: option "pay oldest first".]
+- **Allocation:** pay specific sales and/or specific lines ("For: 10 chairs"); the rest stays as customer credit (advance). Show each open sale's remaining and each line's remaining. Money not allocated stays the customer's advance until the accountant allocates it (owner's answer, Q20); an optional **Pay oldest first** button helps the accountant.
 - **Live checks:** cannot allocate more than the payment, more than a sale's remaining or more than a line's remaining; official sale + Personal account → blocked; Personal + receipt number → blocked.
 - After saving: PAY number. Salesperson payments show **Unverified** until the accountant verifies.
 - **API:** `POST /payments/ {customer_id, account_id, amount, method, receipt_number?, paid_at, allocations:[{order_id, line_id?, amount}]}`.
@@ -512,7 +513,14 @@ Each report: filters at the top, totals, table, **Export Excel** (`export_report
 
 - **Fields:** name, **kind (Organization / Personal)**, method (bank / cash / mobile money), bank name, account number, owner name, active. [Q8: the real list comes from the client.]
 - Which salespeople may use each account is set on the user (P-80) or here.
+- The owner enters the real accounts here once the system is live (Q8).
 - **API:** `GET/POST/PATCH /payment-accounts/`.
+
+### P-84 Settings — P3 (admin)
+
+- **Salesperson discount limit (%)** — the owner sets it (D13). Starts at 0%: every discount needs approval. Show who changed it last and when; every change goes to the audit log.
+- Room for later settings (company name and address on the delivery note, etc.).
+- **API:** `GET/PATCH /api/v1/settings/` [P3].
 
 ### P-83 Audit log — Ready (accountant read, admin)
 
@@ -530,12 +538,7 @@ Each report: filters at the top, totals, table, **Export Excel** (`export_report
 | Question | What may change |
 | --- | --- |
 | Q4, Q18 | Whether "Underground" is its own stock column; low-stock minimum per location |
-| Q6 | Discount limit for salespeople on P-40 |
 | Q10, Q13 | VAT fields and layout of the delivery note (P-43) |
-| Q11 | Credit approval rules on P-40 and P-62 |
 | Q12 | Ethiopian calendar and Amharic on screens and printouts |
-| Q14 | Whether official sales can take Personal payments (P-40, P-50) |
-| Q15 | Wholesale prices for resellers (P-10, P-40) |
 | Q16 | An extra "Approved" step before the storekeeper can release (P-32) |
 | Q19 | Transaction number prefix (`SO-` or the client's `PS-`) |
-| Q20 | "Pay oldest first" on P-50 |

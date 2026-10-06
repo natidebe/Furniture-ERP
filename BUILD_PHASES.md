@@ -26,6 +26,10 @@ How to use this file:
 | D8 | **No company delivery.** Goods leave either to a branch (transfer) or to the customer at pickup. | "Out-of-City Orders" |
 | D9 | **Salespeople see only their own sales and orders.** | Salesperson "View their own sales" |
 | D10 | **New sales and payments are entered on a web page**; the bot does notifications, stock requests and releases, search and quick views. The web frontend is built later, outside this plan (Q17). | Q17 answer |
+| D11 | **Resellers pay a wholesale price.** Each product has a selling price and an optional wholesale price (not above the selling price). A sale to a `reseller` customer uses the wholesale price; when a product has none, the selling price. Walk-in and out-of-city customers pay the selling price. | Owner, 6 Oct 2026 (Q15) |
+| D12 | **Every staff member sees Personal-account payments.** `view_personal_payments` is a default for every role; the admin can still remove it from one user. | Owner, 6 Oct 2026 (Q9) |
+| D13 | **The owner sets the salesperson discount limit in the system's Settings**, later. Until set it is 0%: every discount needs `approve_discounts`. | Owner, 6 Oct 2026 (Q6) |
+| D14 | **One receipt number per Organization payment**; official-receipt sales take only Organization payments (D3 confirmed). A payment with no order stays the customer's advance until the accountant allocates it. Payment accounts and credit limits are entered by the admin in the system once it is live. | Owner, 6 Oct 2026 (Q8, Q11, Q14, Q20) |
 
 **Scope notes**
 - **Web frontend (Q17, decided 5 Oct 2026):** new sales and payments are entered on a **web page**, not in the bot. The web frontend is a separate piece of work, built later on top of this API; it is not in the 12-week backend timeline. Until it exists, staff use the API (Swagger) or the Django admin for testing only. The bot covers notifications, stock requests and releases, search and quick views.
@@ -216,13 +220,13 @@ IsStorekeeper = role_permission("storekeeper", "admin")
 
 | Permission | Guards | Default roles |
 | --- | --- | --- |
-| `view_personal_payments` | Personal-account amounts, lists and report totals | accountant, admin |
+| `view_personal_payments` | Personal-account amounts, lists and report totals | every role (D12) |
 | `verify_payments` | verify / reject a payment | accountant, admin |
 | `correct_payments` | reverse a payment and re-record it | accountant, admin |
 | `correct_transactions` | void / correct a sale; reverse a stock movement | admin (grant per accountant) |
 | `approve_adjustments` | approve / reject stock adjustments | accountant, admin |
 | `approve_credit` | confirm a sale beyond the customer's credit rules | accountant, admin |
-| `approve_discounts` | discounts above `MAX_SALESPERSON_DISCOUNT_PCT` | accountant, admin |
+| `approve_discounts` | discounts above the owner's limit in Settings (D13) | accountant, admin |
 | `export_reports` | Excel exports | accountant, admin |
 
   - Defaults are applied when a user is created and reset when their role changes. After that, the admin sets the exact list per user. Every change is audited.
@@ -255,7 +259,8 @@ IsStorekeeper = role_permission("storekeeper", "admin")
 
 - [x] `Category(ActiveModel)`: `name`, `parent` (FK self, nullable).
 - [x] `Unit(models.Model)`: `name`, `symbol` (seed: pcs, set).
-- [x] `Product(ActiveModel)`: `code` (unique, upper-cased on save, e.g. `VC-001`), `name`, `category` FK, `unit` FK, `selling_price` (Decimal 14,2), `min_stock` (int, default 0), `description` (optional).
+- [x] `Product(ActiveModel)`: `code` (unique, upper-cased on save, e.g. `VC-001`), `name`, `category` FK, `unit` FK, `selling_price` (Decimal 14,2), `wholesale_price` (Decimal 14,2, optional, > 0 and ≤ selling price — D11), `min_stock` (int, default 0), `description` (optional).
+- [x] Both prices change only through `change_price(..., price_type="selling"|"wholesale")`; `PriceHistory.price_type` records which. `catalog.selectors.price_for(product, customer)` gives the price a sale uses. `import_products` and its template have an optional **Wholesale price** column.
   - **Do not add** cost, purchase price or profit fields (D1 — the client's 5:43 PM message).
   - `min_stock` is set by the admin and drives the low-stock alert (4.4).
 - [x] `PriceHistory`: `product`, `old_price`, `new_price`, `changed_by`, `changed_at`, `reason`.
@@ -319,21 +324,21 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 - [ ] **Q3.** Does Denbel request from Pawlos the same way? Piassa ↔ Denbel transfers?
 - [ ] **Q4.** Is the Piassa underground store tracked separately from Piassa?
 - [ ] **Q5.** Do out-of-city and reseller customers collect goods at Pawlos directly?
-- [ ] **Q6.** Can salespeople give discounts, and up to what limit?
+- [x] **Q6.** Can salespeople give discounts, and up to what limit? **Answer: the owner sets the limit in Settings later (D13).**
 - [ ] **Q7.** How are returns and damaged goods handled today?
-- [ ] **Q8.** Which payment accounts exist, and which are Organization vs Personal?
-- [ ] **Q9.** Who may see Personal-account totals and reports?
+- [x] **Q8.** Which payment accounts exist, and which are Organization vs Personal? **Answer: the admin enters them in the system's settings once it is live (D14).**
+- [x] **Q9.** Who may see Personal-account totals and reports? **Answer: every staff member (D12).**
 - [ ] **Q10.** VAT or price-with-tax fields needed on official-receipt delivery notes?
-- [ ] **Q11.** Credit limits per customer, and who approves exceeding them?
+- [x] **Q11.** Credit limits per customer, and who approves exceeding them? **Answer: as planned — a salesperson cannot go beyond a customer's credit rules; the accountant or admin (`approve_credit`) can. Limits are entered per customer in the system (D14).**
 - [ ] **Q12.** Ethiopian calendar and Amharic needed — on screens, documents, or both?
 - [ ] **Q13.** Should a printed delivery note still go to the customer, and in what layout?
-- [ ] **Q14.** Can an **official-receipt** order also receive Personal-account payments? D3 assumes no, and that the 100,000 ETB example is a no-receipt order. Is the receipt issued once per sale or once per payment?
-- [ ] **Q15.** Do resellers pay the same selling price as walk-in customers, or is there a wholesale price?
+- [x] **Q14.** Can an **official-receipt** order also receive Personal-account payments? Is the receipt issued once per sale or once per payment? **Answer: no Personal payments on official-receipt sales; one receipt per payment (D3, D14).**
+- [x] **Q15.** Do resellers pay the same selling price as walk-in customers, or is there a wholesale price? **Answer: resellers get a wholesale price (D11).**
 - [ ] **Q16.** Does a stock request need someone's approval before the Pawlos storekeeper may release it ("approved/requested transaction"), or is a salesperson's request enough?
 - [x] **Q17.** Must all daily work be done in Telegram, including new sales and payments? **Answer: no. Sales and payments are entered on a web page, built later (D10).**
 - [ ] **Q18.** Low-stock alert: is `min_stock` for the company total or per location? Should the stock report show the Piassa underground store as its own column?
 - [ ] **Q19.** Transaction number format: the client's example uses `PS-2026-00125`. What does `PS` mean, and should sales use it instead of `SO`?
-- [ ] **Q20.** How should a customer payment with no order chosen be applied: to the oldest unpaid order first, or kept as an advance until the accountant allocates it?
+- [x] **Q20.** How should a customer payment with no order chosen be applied? **Answer: kept as the customer's advance until the accountant decides (D14).**
 
 ---
 
@@ -643,7 +648,7 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 - [ ] `SalesOrderLine`: `order`, `product`, `qty`, `unit_price` (snapshot copied from product at creation), `discount` (Decimal, default 0), `line_total` (= qty × unit_price − discount), `source_location`, `qty_released` (default 0).
 - [ ] `DeliveryNote`: `number` (DN-…), `order`, `location`, `issued_by`, `issued_at`; `DeliveryNoteLine`: `product`, `qty`.
 - [ ] Services `apps/sales/services.py`:
-  - `create_order(customer, branch, lines, salesperson, channel, receipt_type, notes, payment=None, replaces=None)` → status `draft` (walk-in) or `pending` (phone). Unit prices always come from the product, never from the request body. An optional `payment` (same fields as `record_payment`) is recorded in the same transaction, so a walk-in sale with immediate payment is one step.
+  - `create_order(customer, branch, lines, salesperson, channel, receipt_type, notes, payment=None, replaces=None)` → status `draft` (walk-in) or `pending` (phone). Unit prices always come from the product via `price_for(product, customer)` — the wholesale price for resellers (D11) — never from the request body. An optional `payment` (same fields as `record_payment`) is recorded in the same transaction, so a walk-in sale with immediate payment is one step.
   - `update_draft_order(order, lines, user)` → only while `draft` / `pending`.
   - `confirm_order(order, user)`:
     1. For each line where `source_location` is the branch: post a `sale` movement (branch → customer) and add it to a new DeliveryNote.
@@ -661,8 +666,8 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
     4. writes an audit entry.
 
     The corrected sale is then created with `create_order(..., replaces=voided_order)`, and the advance is allocated to it. Both orders show the link in their history.
-- [ ] Discount rule: salesperson discounts above a configurable limit (setting `MAX_SALESPERSON_DISCOUNT_PCT`, default 0 until the client answers) require `approve_discounts`.
-- [ ] Wholesale/reseller prices: none until Q15 is answered. If the client wants them, add a price list per customer type; `unit_price` still comes from the server, never the request.
+- [ ] Discount rule (D13): salesperson discounts above the limit require `approve_discounts`. The limit is a **system setting the owner edits** (stored in the database, audited, shown on a Settings page — `GET/PATCH /api/v1/settings/`, admin only), starting at 0%. `MAX_SALESPERSON_DISCOUNT_PCT` in the environment is only the starting value.
+- [ ] Reseller prices (D11): `unit_price` is snapshotted from `price_for(product, customer)` when the line is created; changing the customer on a draft re-prices its lines. Tests: a reseller order uses wholesale prices; a walk-in order uses selling prices; a later price change does not alter the order.
 - [ ] Delivery note PDF: `apps/sales/pdf.py` renders `apps/sales/templates/sales/delivery_note.html` with WeasyPrint. Layout: company header, **order (transaction) number** in large type, DN number, date, customer, table (code, product, qty, unit price, total), payment summary, three signature lines (salesperson, storekeeper, customer).
 
 ### 3.3 `payments` app
@@ -672,7 +677,8 @@ def release_stock(*, request, lines, storekeeper, destination_type, note=""):
 - [ ] Payment account rules (D3):
   - An **official-receipt** order accepts allocations only from **Organization** payments, and those need a `receipt_number`.
   - A **Personal** payment never has a `receipt_number`.
-  - A no-receipt order accepts both kinds, as in the 100,000 ETB example. Revisit if Q14 says otherwise.
+  - A no-receipt order accepts both kinds, as in the 100,000 ETB example (confirmed by the owner, Q14).
+  - Each Organization payment on an official-receipt sale carries its own receipt number (one receipt per payment, Q14).
 - [ ] `PaymentAllocation`: `payment`, `order`, `order_line` (nullable), `amount`, `is_active` (False after reversal).
 - [ ] Services `apps/payments/services.py`:
 
@@ -735,11 +741,11 @@ def _allocate(*, payment, order_id, amount, line_id=None):
 ```
 
   - `allocate_payment(payment, allocations, user)` → allocate leftover (advance) money later.
-  - `allocate_oldest_first(payment, user)` → spreads a customer-level payment over that customer's open orders, oldest first; any rest stays an advance. Whether this runs automatically for payments recorded without an order depends on Q20. Until then it is a button the accountant presses.
+  - `allocate_oldest_first(payment, user)` → spreads a customer-level payment over that customer's open orders, oldest first; any rest stays an advance. It never runs on its own: a payment without an order stays an advance until the accountant allocates it (Q20); this is a button the accountant may press.
   - `verify_payment(payment, user)` / `reject_payment(payment, user, reason)` → `verify_payments`; rejected payments deactivate their allocations.
   - `reverse_payment(payment, user, reason)` → `correct_payments`; status `reversed`, allocations `is_active=False`, refresh order statuses, audit log. Never delete.
   - `correct_payment(payment, user, reason, **corrected_fields)` → `correct_payments`; reverses the payment and records the corrected one with `replaces=payment` in the same transaction (D6). Use it for a wrong amount, account, date or receipt number.
-- [ ] Visibility: Personal-account payments (amounts, lists, totals) are shown only to users with `view_personal_payments` and to the salesperson who recorded them. Everyone else sees the payment's existence and status, without the amount or account.
+- [ ] Visibility: Personal-account payments (amounts, lists, totals) are shown to users with `view_personal_payments` — every staff member by default (D12) — and always to the salesperson who recorded them. A user the admin removed it from sees the payment's existence and status, without the amount or account.
 - [ ] Every payment's history shows who recorded it, the amount, the account, the date and time, and the related sale and customer, plus every verify, reject, reverse and correct step and who did it (the "Important Permission" requirement).
   - `refresh_payment_status(order)` → sets `unpaid` / `partial` / `paid` from active allocations.
 - [ ] Selectors: `order_paid(order)`, `order_remaining(order)`, `line_paid(line)`, `line_remaining(line)`, `payment_unallocated(payment)`.
@@ -1097,5 +1103,5 @@ Minimum: 10 pcs
 | `TELEGRAM_WEBHOOK_SECRET` | (random) | bot |
 | `BOT_SERVICE_TOKEN` | (random) | bot, api |
 | `API_BASE_URL` | `https://erp.example.com/api/v1` | bot |
-| `MAX_SALESPERSON_DISCOUNT_PCT` | `0` | api |
+| `MAX_SALESPERSON_DISCOUNT_PCT` | `0` | api (starting value only; the owner changes it in Settings — D13) |
 | `BACKUP_BUCKET_URL` | `s3://erp-backups` | backup job |
