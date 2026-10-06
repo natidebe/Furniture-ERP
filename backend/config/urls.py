@@ -10,6 +10,11 @@ api_v1 = [
     path("", include("apps.catalog.api.urls")),
     path("", include("apps.inventory.api.urls")),
     path("", include("apps.requests.api.urls")),
+    path("", include("apps.customers.api.urls")),
+    path("", include("apps.sales.api.urls")),
+    path("", include("apps.payments.api.urls")),
+    path("", include("apps.reports.api.urls")),
+    path("", include("apps.core.api.urls")),
     path("", include("apps.audit.api.urls")),
 ]
 
