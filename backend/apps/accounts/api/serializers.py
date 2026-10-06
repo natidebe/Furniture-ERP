@@ -27,8 +27,8 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "full_name", "phone", "role", "home_location",
-                  "telegram_id", "is_active", "permissions", "password", "date_joined",
-                  "last_login"]
+                  "telegram_id", "is_active", "permissions", "allowed_payment_accounts",
+                  "password", "date_joined", "last_login"]
         read_only_fields = ["telegram_id", "date_joined", "last_login"]
 
     def validate(self, attrs):

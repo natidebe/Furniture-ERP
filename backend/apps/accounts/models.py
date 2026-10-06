@@ -60,7 +60,9 @@ class User(AbstractUser):
     home_location = models.ForeignKey("locations.Location", null=True, blank=True,
                                       on_delete=models.PROTECT, related_name="staff")
     telegram_id = models.BigIntegerField(null=True, blank=True, unique=True)
-    # allowed_payment_accounts (M2M → payments.PaymentAccount) is added in Phase 3.
+    # Accounts a salesperson may record payments to (others may use any account).
+    allowed_payment_accounts = models.ManyToManyField("payments.PaymentAccount", blank=True,
+                                                      related_name="allowed_users")
 
     history = HistoricalRecords()
     objects = ERPUserManager()

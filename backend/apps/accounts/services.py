@@ -13,7 +13,11 @@ _AUDITED_USER_FIELDS = ("role", "home_location_id", "is_active")
 
 
 def _audited_fields(user: User) -> dict:
-    return {field: getattr(user, field) for field in _AUDITED_USER_FIELDS}
+    data = {field: getattr(user, field) for field in _AUDITED_USER_FIELDS}
+    if user.pk:
+        data["payment_accounts"] = sorted(
+            user.allowed_payment_accounts.values_list("name", flat=True))
+    return data
 
 
 def set_erp_permissions(user: User, permissions) -> None:
@@ -36,13 +40,16 @@ def apply_role_defaults(user: User) -> None:
 
 
 @transaction.atomic
-def create_user(*, actor, password: str, permissions=None, **fields) -> User:
+def create_user(*, actor, password: str, permissions=None, allowed_payment_accounts=None,
+                **fields) -> User:
     """Create a user. ERP permissions default to the role's; pass `permissions` to override."""
     user = User(**fields)
     user.set_password(password)
     user.save()  # the post_save signal applies the role defaults
     if permissions is not None:
         set_erp_permissions(user, permissions)
+    if allowed_payment_accounts is not None:
+        user.allowed_payment_accounts.set(allowed_payment_accounts)
     audit_log(actor=actor, action="user_created", obj=user,
               after={**_audited_fields(user), "permissions": user.erp_permissions})
     return user
@@ -50,7 +57,7 @@ def create_user(*, actor, password: str, permissions=None, **fields) -> User:
 
 @transaction.atomic
 def update_user(*, actor, user: User, password: str | None = None, permissions=None,
-                **fields) -> User:
+                allowed_payment_accounts=None, **fields) -> User:
     """Update a user. A role change resets ERP permissions to the new role's defaults,
     unless `permissions` is also given."""
     user = User.objects.select_for_update().get(pk=user.pk)
@@ -65,6 +72,8 @@ def update_user(*, actor, user: User, password: str | None = None, permissions=N
         set_erp_permissions(user, permissions)
     elif before["role"] != user.role:
         apply_role_defaults(user)
+    if allowed_payment_accounts is not None:
+        user.allowed_payment_accounts.set(allowed_payment_accounts)
 
     after = {**_audited_fields(user), "permissions": user.erp_permissions}
     changed = {k: v for k, v in after.items() if before[k] != v}
