@@ -10,8 +10,9 @@ ACCOUNTANT_DEFAULTS = sorted(ROLE_DEFAULT_PERMISSIONS["accountant"])
 
 @pytest.mark.django_db
 def test_new_users_get_their_role_defaults(make_user):
-    assert make_user(role="salesperson").erp_permissions == []
-    assert make_user(role="storekeeper").erp_permissions == []
+    # Q9: every staff member sees Personal-account payments.
+    assert make_user(role="salesperson").erp_permissions == ["view_personal_payments"]
+    assert make_user(role="storekeeper").erp_permissions == ["view_personal_payments"]
     assert make_user(role="accountant").erp_permissions == ACCOUNTANT_DEFAULTS
 
 
@@ -72,7 +73,7 @@ def test_role_change_resets_to_new_role_defaults(client_for, make_user):
     response = client.patch(f"/api/v1/users/{user.id}/", {"role": "salesperson"}, format="json")
 
     assert response.status_code == 200
-    assert response.data["permissions"] == []
+    assert response.data["permissions"] == ["view_personal_payments"]
 
 
 @pytest.mark.django_db
@@ -121,3 +122,15 @@ def test_deactivated_user_has_no_erp_permissions(make_user):
     admin = make_user(role="admin", is_active=False)
 
     assert not admin.has_erp_permission(ERPPermission.VERIFY_PAYMENTS)
+
+
+@pytest.mark.django_db
+def test_admin_can_still_hide_personal_payments_from_one_user(client_for, make_user):
+    client, _ = client_for("admin")
+    sales = make_user(role="salesperson")
+
+    response = client.patch(f"/api/v1/users/{sales.id}/", {"permissions": []}, format="json")
+
+    assert response.data["permissions"] == []
+    sales.refresh_from_db()
+    assert not sales.has_erp_permission(ERPPermission.VIEW_PERSONAL_PAYMENTS)

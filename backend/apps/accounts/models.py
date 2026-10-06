@@ -30,9 +30,10 @@ class ERPPermission(models.TextChoices):
 
 # Applied when a user is created or their role changes; the admin can then add or remove.
 # Accountants correct sales/stock only "when authorized", so that one is granted per user.
+# Every staff member sees Personal-account payments (owner's answer to Q9).
 ROLE_DEFAULT_PERMISSIONS: dict[str, tuple[str, ...]] = {
-    "salesperson": (),
-    "storekeeper": (),
+    "salesperson": (ERPPermission.VIEW_PERSONAL_PAYMENTS,),
+    "storekeeper": (ERPPermission.VIEW_PERSONAL_PAYMENTS,),
     "accountant": (
         ERPPermission.VIEW_PERSONAL_PAYMENTS,
         ERPPermission.VERIFY_PAYMENTS,
