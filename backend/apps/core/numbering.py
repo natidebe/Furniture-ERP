@@ -13,6 +13,7 @@ GOODS_RECEIPT = "GR"
 ADJUSTMENT = "ADJ"
 PAYMENT = "PAY"
 MOVEMENT = "MV"
+SALES_RETURN = "RET"
 
 
 def next_number(prefix: str) -> str:
