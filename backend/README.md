@@ -52,6 +52,17 @@ Run the tests against Postgres:
 docker compose exec api pytest
 ```
 
+## Telegram bot
+
+1. Create a bot with **@BotFather** in Telegram and copy its token.
+2. In `.env` set `TELEGRAM_BOT_TOKEN=<that token>` and `BOT_SERVICE_TOKEN=<any long random string>`
+   (the API and the bot share it). Optionally `WEB_APP_URL` for the bot's "New Sale" button.
+3. `docker compose up -d && docker compose --profile bot up -d`
+4. Each user: web app → My profile → Get link code, then send `/start CODE` to the bot.
+
+Notifications are sent by the `worker` and `beat` services every 15 seconds; scheduled reports go
+to admins at 20:00 (daily), Saturday 20:00 (weekly), and on the 1st (monthly / yearly).
+
 ## First run (local Python)
 
 Needs Python 3.12, plus Postgres and Redis (`docker compose up -d db redis` is enough).

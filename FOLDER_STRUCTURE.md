@@ -156,15 +156,19 @@ backend/
 │   ├── config.py                     # BOT_TOKEN, WEBHOOK_SECRET, API_BASE_URL, BOT_SERVICE_TOKEN
 │   ├── api_client.py                 # httpx client; sends X-Telegram-User and X-Client: bot
 │   ├── keyboards.py                  # Role-based menus, inline buttons
+│   ├── flows.py                      # Release steps, callback parsing (plain, tested)
+│   ├── texts.py                      # Reply texts (product card, request card, summaries)
 │   ├── handlers/
 │   │   ├── __init__.py
+│   │   ├── common.py                 # Turns API refusals into replies
 │   │   ├── start.py                  # /start <code> linking, main menu
 │   │   ├── search.py                 # Free text → product lookup (e.g. VC-001)
 │   │   ├── storekeeper.py            # Requests list, acknowledge, release flow
 │   │   ├── salesperson.py            # Check stock, my orders, my sales, stock request
 │   │   └── accountant.py             # Payments to verify, quick report
-│   ├── requirements.txt              # aiogram, aiohttp, httpx, sentry-sdk
-│   └── Dockerfile                    # Added in Phase 4
+│   ├── requirements.txt              # aiogram, aiohttp, httpx, redis, sentry-sdk
+│   ├── Dockerfile                    # docker compose --profile bot up -d
+│   └── tests/                        # Flows, menus, and the bot client against the real API
 │
 ├── requirements/
 │   ├── base.txt                      # Runtime (API, worker, beat)

@@ -201,8 +201,8 @@ Short, actionable. Every tile is a link to the filtered list behind it.
 ### P-03 My profile — Ready
 
 - **Shows:** name, username, role, home location, phone, the permissions the user has (readable names from `GET /permissions/`).
-- **Link Telegram:** button **Get link code** → shows an 8-character code (large, copyable), and instructions: "Open the bot and send /start CODE. The code expires in 10 minutes." Show whether Telegram is already linked.
-- **API:** `GET /auth/me/`, `POST /auth/telegram/link-code/` → `{code, expires_at}`, `GET /permissions/`.
+- **Link Telegram:** button **Get link code** → shows an 8-character code (large, copyable), and instructions: "Open the bot and send /start CODE. The code expires in 10 minutes." Show whether Telegram is already linked (`telegram_linked`), with **Unlink** for a lost phone.
+- **API:** `GET /auth/me/`, `POST /auth/telegram/link-code/` → `{code, expires_at}`, `POST /auth/telegram/unlink/`, `GET /permissions/`.
 
 ### P-04 Global search results — P3 (products Ready)
 
@@ -504,7 +504,8 @@ Each report: filters at the top, totals, table, **Export Excel** (`export_report
 | Unverified payments | Payments waiting for the accountant | Date, salesperson |
 
 - Salespeople see only their own sales summary; storekeepers see stock and movements. Personal figures follow `view_personal_payments`.
-- **API:** `GET /reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?…` and `&format=xlsx` for Excel.
+- **Period picker:** Today / This week / This month / This year, or a from–to range. **Sales** shows sales, returns, net, paid vs still owed, official vs no receipt, money received (Organization / Personal), by branch, by salesperson, products; long periods add a month-by-month table.
+- **API:** `GET /reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?period=day|week|month|year&date=YYYY-MM-DD` (or `?from=&to=`), filters as in the table, `&format=xlsx` for Excel; payments also `&group_by=day|week|month|year`.
 
 ### P-80 Users and permissions — Ready (admin)
 

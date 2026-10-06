@@ -904,8 +904,8 @@ Example `GET /api/v1/orders/125/payments/` response:
 
 ### 4.1 `notifications` app — outbox
 
-- [ ] `NotificationOutbox`: `event_type`, `payload` (JSON), `target_user` (FK), `status` (`pending` / `sent` / `failed`), `attempts`, `last_error`, `created_at`, `sent_at`.
-- [ ] Replace the Phase 2 `notify()` stub with a real function that writes outbox rows **inside the same transaction** as the business change, choosing recipients:
+- [x] `NotificationOutbox`: `event_type`, `payload` (JSON), `target_user` (FK), `status` (`pending` / `sent` / `failed`), `attempts`, `last_error`, `created_at`, `sent_at`.
+- [x] Replace the Phase 2 `notify()` stub with a real function that writes outbox rows **inside the same transaction** as the business change, choosing recipients:
 
 | Event | Recipients |
 | --- | --- |
@@ -916,12 +916,12 @@ Example `GET /api/v1/orders/125/payments/` response:
 | `stock.low` | Admins and the relevant storekeeper |
 | `report.daily` / `.weekly` / `.monthly` | Admins (owner) |
 
-- [ ] Celery task `send_pending_notifications` (`apps/notifications/tasks.py`) every 15 seconds: picks `pending` rows (`select_for_update(skip_locked=True)`), sends via the Telegram Bot API, marks `sent`; on error increments `attempts`, retries up to 5 times with backoff, then `failed`.
-- [ ] Skip users without a linked `telegram_id` (they see items in the web app instead).
+- [x] Celery task `send_pending_notifications` (`apps/notifications/tasks.py`) every 15 seconds: picks `pending` rows (`select_for_update(skip_locked=True)`), sends via the Telegram Bot API, marks `sent`; on error increments `attempts`, retries up to 5 times with backoff, then `failed`.
+- [x] Skip users without a linked `telegram_id` (they see items in the web app instead).
 
 ### 4.2 `bot` — aiogram 3 service
 
-- [ ] Folder layout:
+- [x] Folder layout:
 
 ```
 bot/
@@ -941,34 +941,34 @@ bot/
   Dockerfile
 ```
 
-- [ ] The bot never touches the database. It only calls the REST API.
-- [ ] Authentication: the bot calls the API with a service token plus the Telegram user ID. A DRF authentication class `BotUserAuthentication` (`apps/accounts/authentication.py`) resolves the linked user, so **every bot action runs with that user's normal permissions**.
-- [ ] `/start <code>` → `POST /api/v1/auth/telegram/link/` with the code and the Telegram ID. Unknown Telegram IDs get only a "please link your account" message.
-- [ ] Main menus (from `GET /auth/me/` role):
+- [x] The bot never touches the database. It only calls the REST API.
+- [x] Authentication: the bot calls the API with a service token plus the Telegram user ID. A DRF authentication class `BotUserAuthentication` (`apps/accounts/authentication.py`) resolves the linked user, so **every bot action runs with that user's normal permissions**.
+- [x] `/start <code>` → `POST /api/v1/auth/telegram/link/` with the code and the Telegram ID. Unknown Telegram IDs get only a "please link your account" message.
+- [x] Main menus (from `GET /auth/me/` role):
   - Salesperson: New Sale · Request Stock · Check Stock · Customers · Credit · My Orders · My Sales
     - **New Sale** and recording a payment open the web page (D10). Until the web frontend exists, the button explains that sales are entered on the web.
   - Storekeeper: Stock Requests · Pawlos Stock · Release Stock · Stock History
   - Accountant: Sales · Payments · Credit · Stock · Reports · Export Excel
   - Admin: all of the above
-- [ ] Storekeeper release flow:
+- [x] Storekeeper release flow:
   1. Notification card: request number, branch, customer, salesperson, lines with quantities, buttons **[Acknowledge] [Release] [Reject]**.
   2. **Release** → for each line, the bot asks for the quantity actually released (defaults to remaining; buttons for the full amount or typing a number).
   3. Then asks the destination: **[To branch] [Customer pickup]**.
   4. Shows a summary and **[Confirm]** → calls `POST /stock-requests/{id}/release/` → replies with the release number.
-- [ ] Search: any free-text message goes to `GET /search/` (3.4). A product code or name returns the card with name, code, price, stock per location (Piassa, Denbel, Pawlos, and Underground per Q18) and total. Customer, order, delivery, receipt and request numbers return their records, and a transaction number opens its history.
-- [ ] Bot outgoing sender used by the Celery task lives in `apps/notifications/telegram.py` (plain HTTPS calls to the Bot API), so the API and bot share message formats in one place: `apps/notifications/templates.py`.
-- [ ] Webhook secured with `secret_token`; add the `bot` service to `docker-compose.yml`.
+- [x] Search: any free-text message goes to `GET /search/` (3.4). A product code or name returns the card with name, code, price, stock per location (Piassa, Denbel, Pawlos, and Underground per Q18) and total. Customer, order, delivery, receipt and request numbers return their records, and a transaction number opens its history.
+- [x] Bot outgoing sender used by the Celery task lives in `apps/notifications/telegram.py` (plain HTTPS calls to the Bot API), so the API and bot share message formats in one place: `apps/notifications/templates.py`.
+- [x] Webhook secured with `secret_token`; add the `bot` service to `docker-compose.yml`.
 
 ### 4.3 `reports` app
 
-- [ ] `apps/reports/selectors.py` — one function per report, each taking a `filters` dict (`date_from`, `date_to`, `branch`, `salesperson`, `customer`, `order`, `account_kind`, `account`, `category`):
+- [x] `apps/reports/selectors.py` — one function per report, each taking a `filters` dict (`date_from`, `date_to`, `branch`, `salesperson`, `customer`, `order`, `account_kind`, `account`, `category`):
   - `sales_report(filters, period)` → total sales, order count, paid vs credit, official vs no-receipt, by salesperson, by branch, products and quantities sold, best sellers; for yearly, a monthly breakdown.
   - `payments_report(filters, period)` → totals for Organization, Personal, Combined per day / week / month / year, plus a payment list. Filters: date, customer, salesperson, branch, order, account type (the client's list). For a payment, "salesperson" and "branch" mean the salesperson and branch of the order it is allocated to; an unallocated payment counts under the person who recorded it.
   - `credit_report(filters)` → outstanding per customer with ageing buckets (0–30, 31–60, 61–90, 90+ days) and credit collected in the period.
   - `stock_report(filters)` → product × location matrix (Piassa, Underground per Q18, Denbel, Pawlos, In transit, Total — D7) with a low-stock flag.
   - `movements_report(filters)` → every movement with reference and person.
   - `open_requests_report(filters)` and `unverified_payments_report(filters)`.
-- [ ] What each scheduled report contains (from the requirements):
+- [x] What each scheduled report contains (from the requirements):
 
 | Report | Contents |
 | --- | --- |
@@ -977,13 +977,13 @@ bot/
 | Monthly | total sales, total paid, total credit, credit collected, outstanding customer balances, product quantities, by salesperson, by branch, stock movements |
 | Yearly | the monthly contents for the whole year, with a month-by-month breakdown |
 
-- [ ] Definitions to agree with the accountant and write into docstrings:
+- [x] Definitions to agree with the accountant and write into docstrings:
   - "Sales" = confirmed order totals by confirmation date (cancelled and voided excluded, returns subtracted).
   - "Paid sales" = allocations dated in the period; "credit" = sales − paid.
   - Week = Monday–Sunday in Africa/Addis_Ababa.
-- [ ] `apps/reports/excel.py` → one workbook per report, formatted headers, ETB number format, totals row, frozen header, auto column widths.
-- [ ] Endpoints: `GET /api/v1/reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?...` returning JSON; add `&format=xlsx` to download Excel.
-- [ ] Permission: salespeople get only their own sales summary; storekeepers get Pawlos stock and movements; Personal-account figures are hidden unless the user has `view_personal_payments`; `format=xlsx` needs `export_reports`.
+- [x] `apps/reports/excel.py` → one workbook per report, formatted headers, ETB number format, totals row, frozen header, auto column widths.
+- [x] Endpoints: `GET /api/v1/reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?...` returning JSON; add `&format=xlsx` to download Excel.
+- [x] Permission: salespeople get only their own sales summary; storekeepers get Pawlos stock and movements; Personal-account figures are hidden unless the user has `view_personal_payments`; `format=xlsx` needs `export_reports`.
 
 ### 4.4 Scheduled jobs (Celery beat)
 
@@ -992,7 +992,7 @@ The schedule goes in `app.conf.beat_schedule` in `config/celery.py`.
 | Task | Lives in | Schedule (Addis Ababa) | Action |
 | --- | --- | --- | --- |
 | `send_pending_notifications` | `apps/notifications/tasks.py` | every 15 s | Outbox → Telegram |
-| `check_low_stock(product_id)` | `apps/inventory/tasks.py` | on each movement | If the company total on hand (all locations + in transit) is **below** `min_stock`, notify once per day per product. Per-location minimums only if Q18 asks for them |
+| `check_low_stock(product_id)` | `apps/inventory/tasks.py` | on each movement or condition change | If the **sellable** company stock (new pieces, all locations + in transit — D7, D15) is **below** `min_stock`, notify once per day per product. Per-location minimums only if Q18 asks for them |
 | `daily_report` | `apps/reports/tasks.py` | 20:00 every day | Text summary to admins |
 | `weekly_report` | `apps/reports/tasks.py` | Saturday 20:00 | Text summary + Excel file |
 | `monthly_report` | `apps/reports/tasks.py` | 1st of month 08:00 | Text summary + Excel file |
@@ -1023,20 +1023,30 @@ Current stock: 7 pcs
 Minimum: 10 pcs
 ```
 
+### 4.4a Implementation notes (where the code differs from the plan above, and why)
+
+- **Report definitions** (written in `apps/reports/selectors.py`): the plan's "paid sales = allocations dated in the period" could make credit negative (money for old sales counted against today's). Instead: *sales* = sales confirmed in the period at their sold value; *returns* count in the period they happen (re-running an old report gives the same figures); *paid / credit* = what the period's sales stand at now; *money received* = payments dated in the period by account kind; *credit collected* = allocations in the period to older sales.
+- **Credit ageing:** each customer's outstanding is aged by the open sales; money not yet tied to a sale is applied to the oldest first, so the buckets add up to the outstanding exactly.
+- **Weekly report** (Saturday 20:00) covers Monday to Saturday; **monthly** and **yearly** cover the previous month / year. Weekly, monthly and yearly attach the sales workbook.
+- **`?format=xlsx`:** DRF's own `format` override is switched off (`URL_FORMAT_OVERRIDE: None`), otherwise every Excel download would be a 404. Dated reports take `?period=day|week|month|year&date=` or `?from=&to=`; payments also `?group_by=`.
+- **Notifications** are written only for people with a linked Telegram account; each payload is fully rendered when queued. Extra events beyond the table: acknowledged / cancelled requests, transfer short deliveries (to accountants), adjustments to approve, rejected payments, sale goods arrived / prepared / released / cancelled, nightly stock mismatch. Without `TELEGRAM_BOT_TOKEN` the sender does nothing and messages wait.
+- **Bot sign-in:** `Authorization: Bot <BOT_SERVICE_TOKEN>` + `X-Telegram-User`; the request runs as the linked user. `/auth/telegram/link/` accepts only the service token; `/auth/telegram/unlink/` lets a user unlink a lost phone.
+- **Bot service:** long polling when `TELEGRAM_WEBHOOK_URL` is empty (development), webhook otherwise; flow state in Redis. It runs with `docker compose --profile bot up -d`. The bot's decisions (release steps, menus, callbacks) are plain functions in `bot/flows.py` and `bot/keyboards.py`, tested without Telegram; one test drives the real API through the bot's own client. A simple one-product stock request is in the bot; new sales stay on the web (D10).
+
 ### 4.5 Phase 4 tests
 
-- [ ] Outbox row is created in the same transaction; a rolled-back release creates no notification.
-- [ ] Failed Telegram send retries and ends `failed` after 5 attempts.
-- [ ] Bot actions respect permissions: a salesperson's Telegram ID cannot release stock.
-- [ ] Unlinked Telegram ID gets no data.
-- [ ] Payment report: Organization + Personal = Combined for the same filters.
-- [ ] Sales report totals equal the sum of confirmed order totals for the period.
-- [ ] Credit report outstanding equals the sum of customer balances.
-- [ ] Excel export opens with openpyxl and has the expected sheets and totals.
-- [ ] Low-stock alert fires once per day, not on every movement; it fires at 7 < 10 and not at 10 = 10; stock in transit counts.
-- [ ] Payments report filtered by order returns only that order's payments; Personal rows and totals are hidden without `view_personal_payments`.
-- [ ] Excel export without `export_reports` returns 403.
-- [ ] Yearly report monthly rows add up to the yearly totals.
+- [x] Outbox row is created in the same transaction; a rolled-back release creates no notification.
+- [x] Failed Telegram send retries and ends `failed` after 5 attempts.
+- [x] Bot actions respect permissions: a salesperson's Telegram ID cannot release stock.
+- [x] Unlinked Telegram ID gets no data.
+- [x] Payment report: Organization + Personal = Combined for the same filters.
+- [x] Sales report totals equal the sum of confirmed order totals for the period.
+- [x] Credit report outstanding equals the sum of customer balances.
+- [x] Excel export opens with openpyxl and has the expected sheets and totals.
+- [x] Low-stock alert fires once per day, not on every movement; it fires at 7 < 10 and not at 10 = 10; stock in transit counts.
+- [x] Payments report filtered by order returns only that order's payments; Personal rows and totals are hidden without `view_personal_payments`.
+- [x] Excel export without `export_reports` returns 403.
+- [x] Yearly report monthly rows add up to the yearly totals.
 
 ### 4.6 Definition of done
 
