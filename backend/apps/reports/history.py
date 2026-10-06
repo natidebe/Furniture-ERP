@@ -3,6 +3,7 @@
 from django.http import Http404
 
 from apps.audit.models import AuditLog
+from apps.core.ethiopian import format_both
 from apps.inventory.models import StockMovement, StockTransfer
 from apps.payments import selectors as money
 from apps.payments.api.serializers import payment_dict
@@ -173,4 +174,6 @@ def transaction_history(number: str, user) -> dict:
         else:
             raise Http404("Not found.")
     events.sort(key=lambda e: e["at"])
+    for event in events:
+        event["at_ec"] = format_both(event["at"], with_time=True)
     return {"header": header, "events": events}

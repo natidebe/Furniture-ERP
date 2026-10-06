@@ -47,6 +47,7 @@ class StatementRowSerializer(serializers.Serializer):
     balance = serializers.DecimalField(max_digits=14, decimal_places=2)
     account_kind = serializers.CharField(allow_null=True)
     hidden = serializers.BooleanField()
+    date_ec = serializers.CharField()
 
 
 class StatementSerializer(serializers.Serializer):

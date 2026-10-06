@@ -73,7 +73,7 @@ def _sales(wb, data):
     ws = wb.active
     ws.title = "Summary"
     received = data["received"]
-    pairs = [("From", "from", data["from"]), ("To", "to", data["to"]),
+    pairs = [("Period", "period", data["period_label"]),
              ("Sales", "sales", data["sales"]), ("Returns", "returns", data["returns"]),
              ("Net sales", "net", data["net_sales"]),
              ("Transactions", "tx", data["transactions"]),
@@ -99,7 +99,7 @@ def _sales(wb, data):
            data["products"], money={"sales"}, totals={"qty", "sales"})
     if data.get("by_month"):
         _table(wb.create_sheet("By month"),
-               [("Month", "month"), ("Sales (ETB)", "sales"), ("Returns (ETB)", "returns"),
+               [("Month", "label"), ("Sales (ETB)", "sales"), ("Returns (ETB)", "returns"),
                 ("Net sales (ETB)", "net_sales"), ("Transactions", "transactions")],
                data["by_month"], money={"sales", "returns", "net_sales"},
                totals={"sales", "returns", "net_sales", "transactions"})
@@ -109,19 +109,19 @@ def _payments(wb, data):
     ws = wb.active
     ws.title = "Totals"
     t = data["totals"]
-    pairs = [("From", "from", data["from"]), ("To", "to", data["to"]),
+    pairs = [("Period", "period", data["period_label"]),
              ("Organization", "org", t["organization"])]
     if t["personal"] is not None:
         pairs += [("Personal", "per", t["personal"]), ("Combined", "comb", t["combined"])]
     _summary(ws, pairs, money={"org", "per", "comb"})
-    headers = [("Period", "period"), ("Organization (ETB)", "organization")]
+    headers = [("Period", "label"), ("Organization (ETB)", "organization")]
     if t["personal"] is not None:
         headers += [("Personal (ETB)", "personal"), ("Combined (ETB)", "combined")]
     _table(wb.create_sheet("By period"), headers, data["by_period"],
            money={"organization", "personal", "combined"},
            totals={"organization", "personal", "combined"})
     _table(wb.create_sheet("Payments"),
-           [("Number", "number"), ("Paid at", "paid_at"), ("Customer", "customer"),
+           [("Number", "number"), ("Date", "date_ec"), ("Customer", "customer"),
             ("Amount (ETB)", "amount"), ("Account", "account"), ("Kind", "kind"),
             ("Method", "method"), ("Receipt", "receipt_number"), ("Status", "status"),
             ("Recorded by", "recorded_by")], data["payments"], money={"amount"},
@@ -139,7 +139,7 @@ def _credit(wb, data):
            money={"credit_limit", "outstanding", "0_30", "31_60", "61_90", "over_90"},
            totals={"outstanding", "0_30", "31_60", "61_90", "over_90"})
     _summary(wb.create_sheet("Summary"),
-             [("From", "from", data["from"]), ("To", "to", data["to"]),
+             [("Period", "period", data["period_label"]),
               ("Outstanding total", "out", data["outstanding_total"]),
               ("Credit collected", "col", data["credit_collected"])], money={"out", "col"})
 
@@ -176,16 +176,16 @@ BUILDERS = {
     "credit": _credit,
     "stock": _stock,
     "movements": _list("Movements", [
-        ("Number", "number"), ("Date", "occurred_at"), ("Type", "type"),
+        ("Number", "number"), ("Date", "date_ec"), ("Type", "type"),
         ("Condition", "condition"), ("Product", "product"), ("Qty", "qty"), ("From", "from"),
         ("To", "to"), ("Customer", "customer"), ("Transaction", "transaction"),
         ("Reference", "reference"), ("Person", "person")], "movements"),
     "open-requests": _list("Open requests", [
         ("Number", "number"), ("Status", "status"), ("Branch", "branch"), ("Source", "source"),
-        ("Customer", "customer"), ("Salesperson", "salesperson"), ("Created", "created_at"),
+        ("Customer", "customer"), ("Salesperson", "salesperson"), ("Created", "date_ec"),
         ("Waiting (hours)", "waiting_hours"), ("Units left", "units_remaining")], "requests"),
     "unverified-payments": _list("Unverified payments", [
-        ("Number", "number"), ("Paid at", "paid_at"), ("Customer", "customer"),
+        ("Number", "number"), ("Date", "date_ec"), ("Customer", "customer"),
         ("Amount (ETB)", "amount"), ("Account", "account"), ("Kind", "kind"),
         ("Receipt", "receipt_number"), ("Recorded by", "recorded_by")], "payments",
         money={"amount"}, totals={"amount"}),
@@ -201,9 +201,16 @@ def workbook_bytes(name: str, data: dict) -> bytes:
 
 
 def filename(name: str, data: dict) -> str:
+    """e.g. sales_2019-02-01_2019-02-30_EC.xlsx (Ethiopian dates, Q12)."""
+    from apps.core.ethiopian import to_ethiopian
+
+    def ec(value: date) -> str:
+        d = to_ethiopian(value)
+        return f"{d.year}-{d.month:02d}-{d.day:02d}"
+
     first, last = data.get("from"), data.get("to")
     if isinstance(first, date) and isinstance(last, date):
-        span = first.isoformat() if first == last else f"{first.isoformat()}_{last.isoformat()}"
+        span = ec(first) if first == last else f"{ec(first)}_{ec(last)}"
     else:
-        span = timezone.localdate().isoformat()
-    return f"{name}_{span}.xlsx"
+        span = ec(timezone.localdate())
+    return f"{name}_{span}_EC.xlsx"

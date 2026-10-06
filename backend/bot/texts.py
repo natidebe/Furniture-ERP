@@ -51,8 +51,7 @@ def order_line(o: dict) -> str:
 
 def sales_summary(title: str, r: dict) -> str:
     received = r.get("received") or {}
-    parts = [f"📊 <b>{title}</b> ({r['from']}" + (f" – {r['to']}" if r["to"] != r["from"]
-                                                  else "") + ")",
+    parts = [f"📊 <b>{title}</b>\n{escape(r.get('period_label') or str(r['from']))}",
              f"Total sales: {etb(r['net_sales'])} ({r['transactions']} sales)"]
     if r.get("paid") is not None:
         parts.append(f"Paid: {etb(r['paid'])} · Credit: {etb(r['credit'])}")

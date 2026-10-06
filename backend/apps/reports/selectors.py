@@ -1,7 +1,8 @@
 """Reports (BUILD_PHASES.md 4.3). Definitions, agreed in the plan and fixed here:
 
-- Period: a day, a week (Monday–Sunday), a month or a year in Africa/Addis_Ababa, or any
-  from–to range. All dates are local.
+- Period: a day, a week (Monday–Sunday), a month or a year, or any from–to range. Months
+  and years are Ethiopian by default (Q12: Meskerem … Pagume; the year starts Meskerem 1);
+  calendar="gregorian" gives January–December. All dates are Africa/Addis_Ababa.
 - Sales: sales confirmed in the period (cancelled and voided excluded), at the value they were
   sold at (Σ line totals). Returns count in the period they happen, so a report run twice
   gives the same figures; net sales = sales − returns.
@@ -20,6 +21,7 @@ from decimal import Decimal
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
+from apps.core import ethiopian
 from apps.customers.models import Customer
 from apps.customers.selectors import customer_balance
 from apps.inventory.selectors import matrix_locations, products_with_total, stock_rows
@@ -30,18 +32,25 @@ from apps.sales.models import BILLABLE_STATUSES, SalesOrder, SalesOrderLine, Sal
 
 ZERO = Decimal("0.00")
 PERIODS = ("day", "week", "month", "year")
+CALENDARS = ("ethiopian", "gregorian")
 
 
 # ---------------------------------------------------------------- periods
 
-def period_range(period: str = "day", anchor: date | None = None) -> tuple[date, date]:
-    """(first day, last day) of the period containing `anchor` (default today)."""
+def period_range(period: str = "day", anchor: date | None = None,
+                 calendar: str = "ethiopian") -> tuple[date, date]:
+    """(first day, last day) — Gregorian dates — of the period containing `anchor`
+    (default today). Months and years follow `calendar`."""
     anchor = anchor or timezone.localdate()
     if period == "day":
         return anchor, anchor
     if period == "week":
         start = anchor - timedelta(days=anchor.weekday())  # Monday
         return start, start + timedelta(days=6)
+    if calendar == "ethiopian" and period in ("month", "year"):
+        ec = ethiopian.to_ethiopian(anchor)
+        return (ethiopian.month_range(ec.year, ec.month) if period == "month"
+                else ethiopian.year_range(ec.year))
     if period == "month":
         start = anchor.replace(day=1)
         nxt = (start + timedelta(days=32)).replace(day=1)
@@ -65,6 +74,23 @@ def _money(value) -> str:
     return str(Decimal(value).quantize(ZERO))
 
 
+def _ec(value) -> str:
+    return ethiopian.format_both(value, with_time=isinstance(value, datetime))
+
+
+def _month_key(value, calendar: str) -> str:
+    local = timezone.localtime(value).date() if isinstance(value, datetime) else value
+    if calendar == "ethiopian":
+        ec = ethiopian.to_ethiopian(local)
+        return f"{ec.year}-{ec.month:02d}"
+    return local.strftime("%Y-%m")
+
+
+def _month_label(key: str, calendar: str) -> str:
+    year, month = (int(part) for part in key.split("-"))
+    return ethiopian.month_label(year, month) if calendar == "ethiopian" else key
+
+
 def _sees_personal(user) -> bool:
     return user.has_erp_permission("view_personal_payments")
 
@@ -82,7 +108,8 @@ def _scope_orders(qs, user, filters):
 
 # ---------------------------------------------------------------- sales
 
-def sales_report(user, first: date, last: date, filters: dict | None = None) -> dict:
+def sales_report(user, first: date, last: date, filters: dict | None = None,
+                 calendar: str = "ethiopian") -> dict:
     filters = filters or {}
     start, end = _bounds(first, last)
     orders = _scope_orders(SalesOrder.objects.filter(
@@ -101,7 +128,8 @@ def sales_report(user, first: date, last: date, filters: dict | None = None) -> 
     by_receipt = {r["order__receipt_type"]: r["t"] for r in
                   lines.values("order__receipt_type").annotate(t=Sum("line_total"))}
     report = {
-        "from": first, "to": last,
+        "from": first, "to": last, "period_label": ethiopian.format_range(first, last),
+        "calendar": calendar,
         "sales": _money(gross),
         "returns": _money(returned),
         "net_sales": _money(gross - returned),
@@ -133,30 +161,36 @@ def sales_report(user, first: date, last: date, filters: dict | None = None) -> 
     report["best_sellers"] = report["products"][:10]
     report["received"] = payments_totals(user, first, last, filters)
     if (last - first).days > 31:
-        report["by_month"] = _by_month(lines, returns, first, last)
+        report["by_month"] = _by_month(lines, returns, first, last, calendar)
     return report
 
 
-def _by_month(lines, returns, first: date, last: date) -> list[dict]:
-    """Month-by-month breakdown for long periods (the yearly report)."""
+def _calendar_months(first: date, last: date, calendar: str) -> list[str]:
+    if calendar == "ethiopian":
+        return [f"{y}-{m:02d}" for y, m in ethiopian.months_between(first, last)]
+    keys, cursor = [], first.replace(day=1)
+    while cursor <= last:
+        keys.append(cursor.strftime("%Y-%m"))
+        cursor = (cursor + timedelta(days=32)).replace(day=1)
+    return keys
+
+
+def _by_month(lines, returns, first: date, last: date, calendar: str) -> list[dict]:
+    """Month-by-month breakdown for long periods (the yearly report: 13 Ethiopian months)."""
     sales = defaultdict(lambda: ZERO)
     count = defaultdict(set)
     for row in lines.values("order_id", "order__confirmed_at", "line_total"):
-        key = timezone.localtime(row["order__confirmed_at"]).strftime("%Y-%m")
+        key = _month_key(row["order__confirmed_at"], calendar)
         sales[key] += row["line_total"]
         count[key].add(row["order_id"])
     returned = defaultdict(lambda: ZERO)
     for row in returns.values("created_at", "amount"):
-        returned[timezone.localtime(row["created_at"]).strftime("%Y-%m")] += row["amount"]
-    months, cursor = [], first.replace(day=1)
-    while cursor <= last:
-        key = cursor.strftime("%Y-%m")
-        months.append({"month": key, "sales": _money(sales[key]),
-                       "returns": _money(returned[key]),
-                       "net_sales": _money(sales[key] - returned[key]),
-                       "transactions": len(count[key])})
-        cursor = (cursor + timedelta(days=32)).replace(day=1)
-    return months
+        returned[_month_key(row["created_at"], calendar)] += row["amount"]
+    return [{"month": key, "label": _month_label(key, calendar), "sales": _money(sales[key]),
+             "returns": _money(returned[key]),
+             "net_sales": _money(sales[key] - returned[key]),
+             "transactions": len(count[key])}
+            for key in _calendar_months(first, last, calendar)]
 
 
 # ---------------------------------------------------------------- payments
@@ -191,7 +225,7 @@ def payments_totals(user, first: date, last: date, filters: dict | None = None) 
 
 
 def payments_report(user, first: date, last: date, filters: dict | None = None,
-                    group_by: str = "day") -> dict:
+                    group_by: str = "day", calendar: str = "ethiopian") -> dict:
     filters = filters or {}
     qs = _payments(user, first, last, filters).select_related("customer", "account",
                                                               "recorded_by")
@@ -202,22 +236,33 @@ def payments_report(user, first: date, last: date, filters: dict | None = None,
         if group_by == "week":
             key = (local - timedelta(days=local.weekday())).isoformat()
         elif group_by == "month":
-            key = local.strftime("%Y-%m")
+            key = _month_key(local, calendar)
         elif group_by == "year":
-            key = str(local.year)
+            key = (str(ethiopian.to_ethiopian(local).year) if calendar == "ethiopian"
+                   else str(local.year))
         else:
             key = local.isoformat()
         groups[key][p.account.kind] += p.amount
-        rows.append({"number": p.number, "paid_at": p.paid_at, "customer": p.customer.name,
+        rows.append({"number": p.number, "paid_at": p.paid_at, "date_ec": _ec(p.paid_at),
+                     "customer": p.customer.name,
                      "amount": _money(p.amount), "account": p.account.name,
                      "kind": p.account.kind, "method": p.method,
                      "receipt_number": p.receipt_number, "status": p.status,
                      "recorded_by": p.recorded_by.full_name})
     sees = _sees_personal(user)
+    def label(key):
+        if group_by == "month":
+            return _month_label(key, calendar)
+        if group_by in ("day", "week"):
+            return ethiopian.format_both(date.fromisoformat(key))
+        return key
+
     return {
-        "from": first, "to": last,
+        "from": first, "to": last, "period_label": ethiopian.format_range(first, last),
+        "calendar": calendar,
         "totals": payments_totals(user, first, last, filters),
-        "by_period": [{"period": key, "organization": _money(v["organization"]),
+        "by_period": [{"period": key, "label": label(key),
+                       "organization": _money(v["organization"]),
                        "personal": _money(v["personal"]) if sees else None,
                        "combined": _money(v["organization"] + v["personal"]) if sees else None}
                       for key, v in sorted(groups.items())],
@@ -275,7 +320,8 @@ def credit_report(user, first: date, last: date, filters: dict | None = None) ->
                                             order__confirmed_at__lt=start)
     if not _sees_personal(user):
         collected = collected.exclude(payment__account__kind="personal")
-    return {"from": first, "to": last, "outstanding_total": _money(total),
+    return {"from": first, "to": last, "period_label": ethiopian.format_range(first, last),
+            "outstanding_total": _money(total),
             "credit_collected": _money(_sum(collected, "amount")), "customers": rows}
 
 
@@ -314,7 +360,8 @@ def movements_report(user, first: date, last: date, filters: dict | None = None)
         qs = qs.filter(Q(from_location=filters["location"]) | Q(to_location=filters["location"]))
     if filters.get("type"):
         qs = qs.filter(type=filters["type"])
-    rows = [{"number": m.number, "occurred_at": m.occurred_at, "type": m.type,
+    rows = [{"number": m.number, "occurred_at": m.occurred_at, "date_ec": _ec(m.occurred_at),
+             "type": m.type,
              "condition": m.condition, "product": m.product.code, "qty": m.qty,
              "from": m.from_location.code if m.from_location else None,
              "to": m.to_location.code if m.to_location else None,
@@ -322,7 +369,8 @@ def movements_report(user, first: date, last: date, filters: dict | None = None)
              "transaction": m.transaction_number, "reference": m.reference_id,
              "person": m.person.full_name}
             for m in qs.order_by("occurred_at", "id")]
-    return {"from": first, "to": last, "count": len(rows), "movements": rows}
+    return {"from": first, "to": last, "period_label": ethiopian.format_range(first, last),
+            "count": len(rows), "movements": rows}
 
 
 def open_requests_report(user, filters: dict | None = None) -> dict:
@@ -337,6 +385,7 @@ def open_requests_report(user, filters: dict | None = None) -> dict:
                      "branch": r.requesting_location.code, "source": r.source_location.code,
                      "customer": r.customer.name if r.customer else None,
                      "salesperson": r.salesperson.full_name, "created_at": r.created_at,
+                     "date_ec": _ec(r.created_at),
                      "waiting_hours": round((now - r.created_at).total_seconds() / 3600, 1),
                      "units_remaining": remaining})
     return {"count": len(rows), "requests": rows}
@@ -347,7 +396,8 @@ def unverified_payments_report(user, filters: dict | None = None) -> dict:
           .select_related("customer", "account", "recorded_by").order_by("paid_at"))
     if not _sees_personal(user):
         qs = qs.exclude(account__kind="personal")
-    rows = [{"number": p.number, "paid_at": p.paid_at, "customer": p.customer.name,
+    rows = [{"number": p.number, "paid_at": p.paid_at, "date_ec": _ec(p.paid_at),
+             "customer": p.customer.name,
              "amount": _money(p.amount), "account": p.account.name, "kind": p.account.kind,
              "receipt_number": p.receipt_number, "recorded_by": p.recorded_by.full_name}
             for p in qs]

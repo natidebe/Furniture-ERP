@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.catalog.models import Product
+from apps.core.ethiopian import format_both
 from apps.customers.models import Customer
 from apps.inventory.models import Condition
 from apps.locations.models import Location
@@ -90,6 +91,7 @@ def delivery_note_dict(note) -> dict:
     return {
         "id": note.pk, "number": note.number, "location_code": note.location.code,
         "issued_by_name": note.issued_by.full_name, "issued_at": note.issued_at,
+        "issued_at_ec": format_both(note.issued_at, with_time=True),
         "lines": [{"product_code": ln.product.code, "product_name": ln.product.name,
                    "qty": ln.qty} for ln in note.lines.select_related("product")],
     }
@@ -116,6 +118,7 @@ def order_dict(order, user, *, detail=True) -> dict:
         "remaining": str(order.total_amount - paid),
         "notes": order.notes,
         "created_at": order.created_at,
+        "created_at_ec": format_both(order.created_at, with_time=True),
         "confirmed_at": order.confirmed_at,
         "closed_at": order.closed_at,
         "close_reason": order.close_reason,

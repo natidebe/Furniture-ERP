@@ -1,13 +1,14 @@
 """Scheduled reports to the owner (admins) by Telegram (BUILD_PHASES.md 4.4)."""
 
 import base64
-from datetime import date, timedelta
+from datetime import date
 from types import SimpleNamespace
 
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core import ethiopian
 from apps.notifications.services import notify
 from apps.notifications.templates import etb
 
@@ -23,10 +24,9 @@ def _top(items, key, limit=5, fmt=etb):
 
 
 def report_text(title: str, data: dict, *, outstanding=None, collected=None) -> str:
-    """The plan's message format, e.g. "📊 Daily Sales — 03/10/2026"."""
-    first, last = data["from"], data["to"]
-    when = (first.strftime("%d/%m/%Y") if first == last
-            else f"{first.strftime('%d/%m/%Y')} – {last.strftime('%d/%m/%Y')}")
+    """The plan's message format, Ethiopian date first (Q12), e.g.
+    "📊 Daily Sales — ጥቅምት 26, 2019 (05/11/2026)"."""
+    when = data["period_label"]
     received = data["received"]
     lines = [
         f"📊 <b>{title} — {when}</b>",
@@ -85,15 +85,24 @@ def weekly_report() -> int:
 
 @shared_task
 def monthly_report() -> int:
-    """1st of the month 08:00: the previous month."""
-    first, last = selectors.period_range("month",
-                                         timezone.localdate().replace(day=1) - timedelta(days=1))
-    return _send("monthly", "Monthly Sales", first, last, with_credit=True, attach=True)
+    """Runs every morning at 08:00; on the 1st of an Ethiopian month it sends the previous
+    Ethiopian month (Q12). Returns the number of messages queued (0 on other days)."""
+    today = ethiopian.today()
+    if today.day != 1:
+        return 0
+    year, month = ethiopian.previous_month(today)
+    first, last = ethiopian.month_range(year, month)
+    return _send("monthly", f"Monthly Sales — {ethiopian.month_label(year, month)}", first,
+                 last, with_credit=True, attach=True)
 
 
 @shared_task
 def yearly_report() -> int:
-    """1 January 08:00: the previous year, with a month-by-month sheet."""
-    last_year = timezone.localdate().year - 1
-    return _send("yearly", "Yearly Sales", date(last_year, 1, 1), date(last_year, 12, 31),
+    """Runs every morning at 08:00; on Meskerem 1 it sends the Ethiopian year just ended,
+    with a sheet per Ethiopian month (13, Pagume included)."""
+    today = ethiopian.today()
+    if (today.month, today.day) != (1, 1):
+        return 0
+    first, last = ethiopian.year_range(today.year - 1)
+    return _send("yearly", f"Yearly Sales — {today.year - 1} EC", first, last,
                  with_credit=True, attach=True)

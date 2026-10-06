@@ -49,8 +49,16 @@ class TransactionHistoryView(APIView):
         return Response(transaction_history(number, request.user))
 
 
+def _calendar(params) -> str:
+    calendar = params.get("calendar") or "ethiopian"
+    if calendar not in selectors.CALENDARS:
+        raise ValidationError({"calendar": "ethiopian or gregorian."})
+    return calendar
+
+
 def _range(params):
-    """?from=&to= wins; otherwise ?period=day|week|month|year&date= (default: today)."""
+    """?from=&to= wins; otherwise ?period=day|week|month|year&date= (default: today);
+    months and years are Ethiopian unless ?calendar=gregorian (Q12)."""
     first, last = parse_date(params.get("from") or ""), parse_date(params.get("to") or "")
     if first or last:
         if not (first and last) or first > last:
@@ -59,7 +67,8 @@ def _range(params):
     period = params.get("period") or "day"
     if period not in selectors.PERIODS:
         raise ValidationError({"period": f"One of {', '.join(selectors.PERIODS)}."})
-    return selectors.period_range(period, parse_date(params.get("date") or ""))
+    return selectors.period_range(period, parse_date(params.get("date") or ""),
+                                  _calendar(params))
 
 
 class ReportView(APIView):
@@ -70,6 +79,8 @@ class ReportView(APIView):
         parameters=[
             OpenApiParameter("period", str, enum=list(selectors.PERIODS)),
             OpenApiParameter("date", str, description="YYYY-MM-DD, inside the period"),
+            OpenApiParameter("calendar", str, enum=["ethiopian", "gregorian"],
+                             description="Months and years (default ethiopian)"),
             OpenApiParameter("from", str), OpenApiParameter("to", str),
             OpenApiParameter("format", str, enum=["json", "xlsx"]),
             OpenApiParameter("group_by", str, enum=list(selectors.PERIODS),
@@ -101,9 +112,12 @@ class ReportView(APIView):
                 group_by = params.get("group_by") or "day"
                 if group_by not in selectors.PERIODS:
                     raise ValidationError({"group_by": "day, week, month or year."})
-                data = selectors.payments_report(user, first, last, filters, group_by)
+                data = selectors.payments_report(user, first, last, filters, group_by,
+                                                 _calendar(params))
+            elif name == "sales":
+                data = selectors.sales_report(user, first, last, filters, _calendar(params))
             else:
-                report = {"sales": selectors.sales_report, "credit": selectors.credit_report,
+                report = {"credit": selectors.credit_report,
                           "movements": selectors.movements_report}[name]
                 data = report(user, first, last, filters)
         else:

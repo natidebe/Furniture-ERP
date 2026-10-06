@@ -5,7 +5,9 @@
 <title>{{ note.number }}</title>
 <style>
   @page { size: A4; margin: 16mm; }
-  body { font-family: "DejaVu Sans", sans-serif; font-size: 10.5pt; color: #000; }
+  /* Abyssinica SIL carries the Ethiopic letters for Ethiopian month names (Q12). */
+  body { font-family: "DejaVu Sans", "Abyssinica SIL", sans-serif; font-size: 10.5pt;
+         color: #000; }
   .head { display: flex; justify-content: space-between; border-bottom: 2px solid #000;
           padding-bottom: 6pt; }
   .company { font-size: 15pt; font-weight: bold; }
@@ -39,7 +41,7 @@
   </div>
 
   <table class="meta">
-    <tr><td class="label">Date</td><td>{{ note.issued_at|date:"d/m/Y H:i" }}</td>
+    <tr><td class="label">Date</td><td>{{ issued }}</td>
         <td class="label">From</td><td>{{ note.location.name }}</td></tr>
     <tr><td class="label">Customer</td>
         <td>{{ customer.name }}{% if customer.shop_name %} — {{ customer.shop_name }}{% endif %}</td>

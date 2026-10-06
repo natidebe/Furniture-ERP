@@ -23,13 +23,15 @@ app.conf.beat_schedule = {
         "task": "apps.reports.tasks.weekly_report",
         "schedule": crontab(hour=20, minute=0, day_of_week="sat"),
     },
+    # Ethiopian months don't line up with Gregorian ones: these run daily and send only on
+    # the 1st of an Ethiopian month / on Meskerem 1 (Q12).
     "monthly-report": {
         "task": "apps.reports.tasks.monthly_report",
-        "schedule": crontab(hour=8, minute=0, day_of_month=1),
+        "schedule": crontab(hour=8, minute=0),
     },
     "yearly-report": {
         "task": "apps.reports.tasks.yearly_report",
-        "schedule": crontab(hour=8, minute=0, day_of_month=1, month_of_year=1),
+        "schedule": crontab(hour=8, minute=5),
     },
     "nightly-stock-check": {
         "task": "apps.inventory.tasks.nightly_stock_check",

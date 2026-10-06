@@ -1,5 +1,6 @@
 from django.template.loader import render_to_string
 
+from apps.core.ethiopian import format_both
 from apps.payments import selectors as money
 
 
@@ -13,6 +14,7 @@ def delivery_note_context(note) -> dict:
     paid = money.order_paid(order)
     return {
         "note": note, "order": order, "customer": order.customer, "lines": lines,
+        "issued": format_both(note.issued_at, with_time=True),
         "order_total": order.total_amount, "paid": paid,
         "remaining": order.total_amount - paid,
     }

@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.db.models import Q, Sum
 from django.utils import timezone
 
+from apps.core.ethiopian import format_both
 from apps.payments.models import VALID_PAYMENT_STATUSES, Payment
 from apps.payments.selectors import ZERO, can_see_amount, payment_unallocated
 from apps.sales.models import BILLABLE_STATUSES, SalesOrder, SalesReturn
@@ -61,6 +62,7 @@ class StatementRow:
     balance: Decimal
     account_kind: str | None = None
     hidden: bool = False  # a Personal payment the viewer may not see
+    date_ec: str = ""     # Ethiopian first, Gregorian beside it (Q12)
 
 
 def _start(day: date) -> datetime:
@@ -102,7 +104,8 @@ def customer_statement(customer, user, date_from: date | None = None,
         if date_to and when >= _start(date_to) + timedelta(days=1):
             continue
         rows.append(StatementRow(when, kind, number, text, debit,
-                                 None if hidden else credit, balance, account_kind, hidden))
+                                 None if hidden else credit, balance, account_kind, hidden,
+                                 format_both(when, with_time=True)))
     return {"opening_balance": opening, "rows": rows,
             "closing_balance": rows[-1].balance if rows else opening}
 

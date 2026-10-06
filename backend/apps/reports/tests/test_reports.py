@@ -158,8 +158,15 @@ def test_yearly_months_add_up(day, staff):
     first, last = selectors.period_range("year")
     report = selectors.sales_report(staff.admin, first, last)
 
-    assert len(report["by_month"]) == 12
+    assert len(report["by_month"]) == 13  # Meskerem … Pagume
+    assert report["by_month"][0]["label"].startswith("መስከረም")
+    assert report["by_month"][-1]["label"].startswith("ጳጉሜ")
     assert sum(D(m["sales"]) for m in report["by_month"]) == D(report["sales"])
+
+    gregorian = selectors.sales_report(staff.admin, *selectors.period_range(
+        "year", calendar="gregorian"), calendar="gregorian")
+    assert len(gregorian["by_month"]) == 12
+    assert sum(D(m["sales"]) for m in gregorian["by_month"]) == D(gregorian["sales"])
 
 
 def test_period_ranges():
@@ -167,9 +174,14 @@ def test_period_ranges():
 
     wednesday = date(2026, 10, 7)
     assert selectors.period_range("week", wednesday) == (date(2026, 10, 5), date(2026, 10, 11))
-    assert selectors.period_range("month", date(2026, 2, 10)) == (date(2026, 2, 1),
-                                                                  date(2026, 2, 28))
-    assert selectors.period_range("year", wednesday) == (date(2026, 1, 1), date(2026, 12, 31))
+    # Ethiopian by default (Q12): 7 Oct 2026 is Meskerem 27, 2019.
+    assert selectors.period_range("month", wednesday) == (date(2026, 9, 11), date(2026, 10, 10))
+    # 2019 EC is a leap year: Pagume has 6 days, so the year ends on 11 Sep 2027.
+    assert selectors.period_range("year", wednesday) == (date(2026, 9, 11), date(2027, 9, 11))
+    assert selectors.period_range("month", date(2026, 2, 10), "gregorian") == (
+        date(2026, 2, 1), date(2026, 2, 28))
+    assert selectors.period_range("year", wednesday, "gregorian") == (date(2026, 1, 1),
+                                                                     date(2026, 12, 31))
 
 
 # ---------------------------------------------------------------- API and Excel
