@@ -91,8 +91,10 @@ def expected_on_hand() -> dict[tuple[int, int], int]:
 
 
 def expected_reserved() -> dict[tuple[int, int], int]:
-    """(product_id, location_id) → stock that open requests still hold at their source."""
+    """(product_id, location_id) → stock held: what open requests still hold at their source,
+    plus goods that arrived at a branch for a sale and wait for the customer."""
     from apps.requests.models import OPEN_STATUSES, StockRequestLine
+    from apps.sales.models import BILLABLE_STATUSES, SalesOrderLine
 
     result: dict[tuple[int, int], int] = defaultdict(int)
     rows = (StockRequestLine.objects.filter(request__status__in=OPEN_STATUSES)
@@ -101,6 +103,11 @@ def expected_reserved() -> dict[tuple[int, int], int]:
     for row in rows:
         if row["q"]:
             result[(row["product_id"], row["request__source_location_id"])] += row["q"]
+    held = (SalesOrderLine.objects.filter(qty_awaiting__gt=0,
+                                          order__fulfillment_status__in=BILLABLE_STATUSES)
+            .values("product_id", "order__branch_id").annotate(q=Sum("qty_awaiting")))
+    for row in held:
+        result[(row["product_id"], row["order__branch_id"])] += row["q"]
     return dict(result)
 
 

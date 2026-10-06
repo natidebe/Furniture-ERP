@@ -57,15 +57,20 @@ def _free_remaining(request, user, reason: str, new_status: str):
 
 @transaction.atomic
 def create_stock_request(*, requesting_location, source_location, lines, salesperson,
-                         customer=None, reference="", notes="") -> StockRequest:
+                         customer=None, reference="", notes="", order=None) -> StockRequest:
     """lines = [{"product": Product, "qty": int}]. Reserves every line at the source.
 
     Storekeepers cannot create requests: the person who releases stock must never be the
-    one who asked for it.
+    one who asked for it. A request made by a sale (`order`) carries that sale's authority:
+    it is for the sale's branch and customer and uses the sale's number (D4).
     """
-    if salesperson.role not in (Role.SALESPERSON, Role.ADMIN):
+    if order is not None:
+        if requesting_location.pk != order.branch_id:
+            raise BusinessRuleError("wrong_location", "A sale's stock goes to its own branch.")
+        customer = order.customer
+    elif salesperson.role not in (Role.SALESPERSON, Role.ADMIN):
         raise BusinessRuleError("permission_denied", "Only sales staff can request stock.")
-    if salesperson.role == Role.SALESPERSON \
+    elif salesperson.role == Role.SALESPERSON \
             and salesperson.home_location_id != requesting_location.pk:
         raise BusinessRuleError("wrong_location",
                                 "You can only request stock for your own branch.")
@@ -85,8 +90,10 @@ def create_stock_request(*, requesting_location, source_location, lines, salespe
     number = next_number(STOCK_REQUEST)
     request = StockRequest.objects.create(
         number=number, requesting_location=requesting_location,
-        source_location=source_location, transaction_number=number, customer=customer,
-        reference=reference, salesperson=salesperson, notes=notes)
+        source_location=source_location,
+        transaction_number=order.number if order is not None else number,
+        order=order, customer=customer, reference=reference, salesperson=salesperson,
+        notes=notes)
     for line in lines:
         StockRequestLine.objects.create(request=request, product=line["product"],
                                         qty_requested=line["qty"])
@@ -172,6 +179,10 @@ def release_stock(*, request, lines, storekeeper, destination_type, note="") -> 
                 reference_type="stock_release", reference_id=release.number,
                 transaction_number=request.transaction_number, person=storekeeper,
                 consume_reservation=True)
+        if request.order_id:
+            from apps.sales.services import on_pickup_released
+
+            on_pickup_released(request=request, release=release, picked=picked)
 
     for line, qty in picked:
         line.qty_released += qty
@@ -213,6 +224,21 @@ def cancel_request(*, request, user, reason: str) -> StockRequest:
                                 f"{request.number} is {request.status}; close it instead.")
     _free_remaining(request, user, reason, RequestStatus.CANCELLED)
     audit_log(actor=user, action="stock_request_cancelled", obj=request, reason=reason)
+    notify("stock_request.cancelled", request)
+    return request
+
+
+@transaction.atomic
+def close_for_order(*, request, user, reason: str) -> StockRequest:
+    """A sale was cancelled or voided: stop its request whatever its state and free what is
+    still reserved (cancelled before any release, closed after one)."""
+    request = _lock(request)
+    if not request.is_open:
+        return request
+    released = request.lines.filter(qty_released__gt=0).exists()
+    _free_remaining(request, user, reason,
+                    RequestStatus.CLOSED if released else RequestStatus.CANCELLED)
+    audit_log(actor=user, action="stock_request_closed", obj=request, reason=reason)
     notify("stock_request.cancelled", request)
     return request
 

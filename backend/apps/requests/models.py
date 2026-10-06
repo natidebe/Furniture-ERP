@@ -38,6 +38,9 @@ class StockRequest(models.Model):
                                         related_name="+")
     # D4: the order's SO-… number once sales exist (Phase 3), otherwise this request's number.
     transaction_number = models.CharField(max_length=20, db_index=True)
+    # The sale this request supplies (Phase 3); empty for a branch restock.
+    order = models.ForeignKey("sales.SalesOrder", null=True, blank=True,
+                              on_delete=models.PROTECT, related_name="stock_requests")
     customer = models.ForeignKey("customers.Customer", null=True, blank=True,
                                  on_delete=models.PROTECT, related_name="stock_requests")
     reference = models.CharField(max_length=100, blank=True)  # customer / order reference

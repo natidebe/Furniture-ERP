@@ -408,6 +408,12 @@ def receive_transfer(*, transfer, user, received=None) -> StockTransfer:
         line.qty_received = qty
         line.save(update_fields=["qty_received"])
 
+    if transfer.stock_request_id:
+        from apps.sales.services import on_transfer_received
+
+        on_transfer_received(transfer=transfer,
+                             received={line.pk: line.qty_received for line in lines})
+
     transfer.status = TransferStatus.RECEIVED
     transfer.received_by, transfer.received_at = user, timezone.now()
     transfer.discrepancy_note = "\n".join(shortfalls)
