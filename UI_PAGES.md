@@ -150,6 +150,7 @@ Suggested colour meaning: grey = not started, blue = in progress, green = done, 
 | P-24 | Stock adjustments list + Propose + Approve | storekeeper, accountant, admin | Ready |
 | P-25 | Transfers list + detail + Receive | all | Ready |
 | P-26 | New manual transfer | accountant, admin | Ready |
+| P-27 | Display and damaged stock | staff at the location, accountant, admin | Ready |
 | P-30 | Stock requests list | salesperson, storekeeper, accountant, admin | Ready |
 | P-31 | New stock request | salesperson, admin | Ready |
 | P-32 | Stock request detail (acknowledge, release, reject, cancel, close) | all | Ready |
@@ -271,11 +272,19 @@ The client's "Current stock" table.
 | --- | --- | --- | --- | --- | --- | --- |
 | VC-001 Visitor chair | 25 | 0 | 5 | 85 (5 reserved) | 0 | **115** |
 
-- Each location cell shows **on hand**; reserved (held for stock requests) appears small next to it; hover shows available.
-- **Total includes In transit (D7).** Low-stock rows highlighted (total < min stock).
+- Each location cell shows **on hand**; small badges show **reserved** (held for requests or sales), **display** and **damaged** (D15); hover shows available (new stock free to sell).
+- **Total includes In transit (D7).** A second total shows **sellable** stock (`total_new`, without display and damaged pieces). Low-stock rows (sellable < min stock) are highlighted.
 - **Filters:** search, category, low stock only. Pagination by product.
 - **Actions:** row → P-11. Export Excel [P4, `export_reports`].
 - **API:** `GET /stock/summary/?search=&category=&low=true` → `locations` (column order) and `results` (rows: `stock[code].on_hand/reserved/available`, `in_transit`, `total`, `low_stock`).
+
+### P-27 Display and damaged stock — Ready (D15)
+
+- **List:** CC number, date, location, product, quantity, from → to (new / display / damaged), reason, who. Staff see their own location.
+- **New change (staff at the location, accountant, admin):** location, product, quantity, from condition, to condition, reason (required). Shows how many of the "from" condition are free there.
+- Common uses: **Put on display**, **Mark damaged**, **Back to new** (repaired / taken off display).
+- **Writing off** damaged pieces is a stock adjustment with condition "damaged" (P-24, needs approval). **Sending for repair** is a transfer line with condition "damaged" (P-26).
+- **API:** `GET/POST /stock/condition-changes/ {product, location, qty, from_condition, to_condition, reason}`.
 
 ### P-21 Low stock — Ready
 
@@ -303,7 +312,7 @@ When imported goods arrive (usually at Pawlos). [Q1]
 For counts, damage, loss, found items and opening balances.
 
 - **List:** ADJ number, date, location, product, change (+/−, coloured), reason, status, proposed by, decided by.
-- **Propose form (storekeeper at own location, accountant, admin):** location, product, change (positive adds, negative removes), reason (count, damage, loss, found, opening balance), note.
+- **Propose form (storekeeper at own location, accountant, admin):** location, product, change (positive adds, negative removes), **condition** (new / display / damaged — e.g. write off damaged pieces), reason (count, damage, loss, found, opening balance), note.
 - **Approve / Reject (`approve_adjustments`):** approve note optional, reject note required. **You cannot approve your own proposal** unless you are admin — hide Approve on your own rows.
 - Nothing moves until approved — say "Waiting for approval" clearly.
 - **API:** `GET/POST /adjustments/`, `POST /adjustments/{id}/approve/ {note}`, `POST /adjustments/{id}/reject/ {note}`.
@@ -320,7 +329,7 @@ For counts, damage, loss, found items and opening balances.
 
 Moves stock between locations without a stock request (for example Piassa → Denbel). [Q3]
 
-- **Fields:** from, to (not the same; never In Transit), lines (product + qty), note.
+- **Fields:** from, to (not the same; never In Transit), lines (product + qty + condition: new, display or damaged — e.g. a damaged piece sent to Pawlos for repair), note.
 - **API:** `POST /transfers/ {from_location, to_location, lines, note}`.
 
 ### P-30 Stock requests list — Ready
@@ -377,7 +386,7 @@ The most-used screen. It must be fast at the counter.
 
 1. **Customer:** search by name/phone/shop, or **Walk-in customer** (one click), or **+ New customer** (P-62 in a side panel). Show the customer's credit status and outstanding balance.
 2. **Channel:** Walk-in or Phone order.
-3. **Lines:** product search by code/name → for each product show the price **for this customer** (wholesale for resellers, D11 — label it "Wholesale") and **stock at my branch and at Pawlos**. Quantity. **Source:** "From this branch" (taken now) or "From Pawlos" (creates a stock request when the sale is confirmed). Unit price comes from the product and **cannot be typed**. Discount per line (limit set by the owner in Settings, P-84; above it needs `approve_discounts`).
+3. **Lines:** product search by code/name → for each product show the price **for this customer** (wholesale for resellers, D11 — label it "Wholesale") and **stock at my branch and at Pawlos**. Quantity. **Source:** "From this branch" (taken now) or "From Pawlos" (creates a stock request when the sale is confirmed). Unit price comes from the product and **cannot be typed**. **Condition:** new (default), or a **display / damaged** piece from this branch's stock (D15) — usually with a discount. Discount per line (limit set by the owner in Settings, P-84; above it needs `approve_discounts`).
 4. **Receipt type** ("payment type"): **Official receipt** or **Without receipt**.
 5. **Payment now (optional):** amount, account (only accounts this user may use; Organization/Personal clearly marked; an official-receipt sale offers **only Organization accounts**), method, receipt number (required for official receipt + Organization — one per payment; not allowed for Personal), pay for specific lines (optional).
 6. **Totals:** total, paid now, remaining (= credit).
@@ -424,7 +433,7 @@ For out-of-city orders (Jimma, Bahir Dar, Mekele…): **Pending → Confirmed �
 
 ### P-45 Return goods and Void sale (dialogs) — P3
 
-- **Return goods:** pick lines and quantities, the location receiving them, reason. Reduces the sale total and the customer balance. [Q7]
+- **Return goods:** pick lines and quantities (and whether each comes back **new or damaged**), the location receiving them, reason. Reduces the sale total and the customer balance. [Q7]
 - **Void sale** (`correct_transactions`): for a sale entered wrongly. Shows exactly what will happen: stock goes back, the sale leaves the customer balance, its payments become the customer's credit. Reason required. Then offers **Re-issue corrected sale** (opens P-40 pre-filled, linked to the voided one).
 
 ### P-50 Record payment — P3

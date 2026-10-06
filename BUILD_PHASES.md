@@ -29,6 +29,7 @@ How to use this file:
 | D11 | **Resellers pay a wholesale price.** Each product has a selling price and an optional wholesale price (not above the selling price). A sale to a `reseller` customer uses the wholesale price; when a product has none, the selling price. Walk-in and out-of-city customers pay the selling price. | Owner, 6 Oct 2026 (Q15) |
 | D12 | **Every staff member sees Personal-account payments.** `view_personal_payments` is a default for every role; the admin can still remove it from one user. | Owner, 6 Oct 2026 (Q9) |
 | D13 | **The owner sets the salesperson discount limit in the system's Settings**, later. Until set it is 0%: every discount needs `approve_discounts`. | Owner, 6 Oct 2026 (Q6) |
+| D15 | **Display and damaged stock.** Showroom samples and damaged pieces stay in their location's stock and the company total, but in separate counts: never reserved for a request and never sold as new. Staff at the location move pieces between new, display and damaged (a recorded, audited condition change with a reason). They are sold as such (a sale line with that condition, discount rules apply), written off by an approved adjustment, moved for repair by a transfer that keeps the condition, and broken returns can go straight to damaged. Low stock counts sellable (new) stock only. | Owner, 6 Oct 2026 |
 | D14 | **One receipt number per Organization payment**; official-receipt sales take only Organization payments (D3 confirmed). A payment with no order stays the customer's advance until the accountant allocates it. Payment accounts and credit limits are entered by the admin in the system once it is live. | Owner, 6 Oct 2026 (Q8, Q11, Q14, Q20) |
 
 **Scope notes**
@@ -483,6 +484,16 @@ def reverse_movement(*, movement, person, reason) -> StockMovement:
 - [x] `send_transfer(from, to, lines, user, stock_request=None)` → `transfer_out` movements (from → TRANSIT), status `in_transit`.
 - [x] `receive_transfer(transfer, user, received_lines)` → `transfer_in` movements (TRANSIT → to), status `received`. A short receipt raises a discrepancy note for the accountant.
 - [x] Management command `rebuild_stock_balances [--check]`: recomputes balances from movements; `--check` only reports mismatches. Scheduled nightly in Phase 4.
+
+### 2.2b Display and damaged stock (D15, added 6 Oct 2026)
+
+- [x] `StockBalance.display` and `StockBalance.damaged` are parts of `on_hand`; `new = on_hand − display − damaged`; `available = new − reserved`. A database rule keeps `reserved ≤ new`.
+- [x] `StockMovement.condition` (`new` / `display` / `damaged`): a movement takes pieces out of, and puts them into, the count for its condition. Reversals keep the condition.
+- [x] `StockConditionChange` (`CC-…`, immutable): `change_condition(product, location, qty, from, to, user, reason)` — staff at that location, accountants, admins; audited.
+- [x] `StockAdjustment.condition` (write off damaged pieces with approval) and `StockTransferLine.condition` (send a damaged piece for repair; short receipts stay in TRANSIT in that condition).
+- [x] Sales lines and returns carry a condition (sales: display/damaged only from the branch's own stock; one line per product and condition).
+- [x] `rebuild_stock_balances` rebuilds `display` and `damaged` from movements and condition changes. Low stock uses sellable stock.
+- [x] Endpoints: `GET/POST /api/v1/stock/condition-changes/`; balances, the stock matrix (`display`, `damaged`, `total_new`), movements, adjustments and transfer lines show the condition.
 
 ### 2.3 `requests` app — Pawlos stock requests
 
