@@ -36,6 +36,7 @@ backend/
 │   │   ├── services.py               # get_settings(), update_settings()
 │   │   ├── api/                      # /settings/
 │   │   ├── numbering.py              # next_number("SO") → SO-2026-00125
+│   │   ├── ethiopian.py              # Ethiopian ⇄ Gregorian dates, Ethiopian months (D16)
 │   │   ├── exceptions.py             # BusinessRuleError + DRF exception handler
 │   │   ├── views.py                  # GET /health/
 │   │   ├── management/commands/

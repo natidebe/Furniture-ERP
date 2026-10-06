@@ -61,7 +61,7 @@ Admins have every permission.
 
 - Money: **ETB**, two decimals, thousands separator: `100,000.00 ETB`. The API sends money as text (`"100000.00"`) — never round it in the browser.
 - Quantities are whole numbers. Show the unit (`pcs`, `set`).
-- Dates: `03/10/2026` (day/month/year) and time `14:35`, in Addis Ababa time. [Q12: Ethiopian calendar and Amharic may be required on screens and/or printouts — keep room for a second date line and for longer labels.]
+- **Dates (D16): Ethiopian first, Gregorian beside it** — `ጥቅምት 26, 2019 (05/11/2026)` — and time `14:35`, Addis Ababa time. The API sends timestamps in ISO form plus ready-made `…_ec` strings on documents; `GET /calendar/?date=` or `?ec=` converts any date, so every screen matches the printouts. **Date pickers** let staff pick an Ethiopian date (month names መስከረም … ጳጉሜ; Pagume has 5 or 6 days).
 - **There is no cost price, profit or margin anywhere (D1).** Do not design fields for them.
 
 ### 2.4 Document numbers (D4)
@@ -504,7 +504,7 @@ Each report: filters at the top, totals, table, **Export Excel** (`export_report
 | Unverified payments | Payments waiting for the accountant | Date, salesperson |
 
 - Salespeople see only their own sales summary; storekeepers see stock and movements. Personal figures follow `view_personal_payments`.
-- **Period picker:** Today / This week / This month / This year, or a from–to range. **Sales** shows sales, returns, net, paid vs still owed, official vs no receipt, money received (Organization / Personal), by branch, by salesperson, products; long periods add a month-by-month table.
+- **Period picker:** Today / This week / This month / This year — **months and years are Ethiopian** (D16), with a switch for Gregorian — or a from–to range. Show each report's `period_label`. **Sales** shows sales, returns, net, paid vs still owed, official vs no receipt, money received (Organization / Personal), by branch, by salesperson, products; long periods add a month-by-month table.
 - **API:** `GET /reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?period=day|week|month|year&date=YYYY-MM-DD` (or `?from=&to=`), filters as in the table, `&format=xlsx` for Excel; payments also `&group_by=day|week|month|year`.
 
 ### P-80 Users and permissions — Ready (admin)

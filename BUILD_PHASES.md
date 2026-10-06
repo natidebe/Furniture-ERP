@@ -30,6 +30,7 @@ How to use this file:
 | D12 | **Every staff member sees Personal-account payments.** `view_personal_payments` is a default for every role; the admin can still remove it from one user. | Owner, 6 Oct 2026 (Q9) |
 | D13 | **The owner sets the salesperson discount limit in the system's Settings**, later. Until set it is 0%: every discount needs `approve_discounts`. | Owner, 6 Oct 2026 (Q6) |
 | D15 | **Display and damaged stock.** Showroom samples and damaged pieces stay in their location's stock and the company total, but in separate counts: never reserved for a request and never sold as new. Staff at the location move pieces between new, display and damaged (a recorded, audited condition change with a reason). They are sold as such (a sale line with that condition, discount rules apply), written off by an approved adjustment, moved for repair by a transfer that keeps the condition, and broken returns can go straight to damaged. Low stock counts sellable (new) stock only. | Added 6 Oct 2026 at the project's request; confirm with the owner |
+| D16 | **Ethiopian calendar.** Dates are shown Ethiopian first with the Gregorian date beside them — "ጥቅምት 26, 2019 (05/11/2026)" — on delivery notes, Telegram messages, Excel and statements. Report months and years are Ethiopian (Meskerem … Pagume, the year from Meskerem 1); `?calendar=gregorian` gives January–December. The monthly report goes out on the 1st of each Ethiopian month, the yearly one on Meskerem 1. Dates are stored as ordinary (Gregorian) timestamps; only display and report periods change. | Q12 answer, 6 Oct 2026 |
 | D14 | **One receipt number per Organization payment**; official-receipt sales take only Organization payments (D3 confirmed). A payment with no order stays the customer's advance until the accountant allocates it. Payment accounts and credit limits are entered by the admin in the system once it is live. | Owner, 6 Oct 2026 (Q8, Q11, Q14, Q20) |
 
 **Scope notes**
@@ -331,7 +332,7 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 - [x] **Q9.** Who may see Personal-account totals and reports? **Answer: every staff member (D12).**
 - [ ] **Q10.** VAT or price-with-tax fields needed on official-receipt delivery notes?
 - [x] **Q11.** Credit limits per customer, and who approves exceeding them? **Answer: as planned — a salesperson cannot go beyond a customer's credit rules; the accountant or admin (`approve_credit`) can. Limits are entered per customer in the system (D14).**
-- [ ] **Q12.** Ethiopian calendar and Amharic needed — on screens, documents, or both?
+- [x] **Q12.** Ethiopian calendar and Amharic needed — on screens, documents, or both? **Answer: the Ethiopian calendar, Ethiopian first with Gregorian beside it, everywhere; Ethiopian report months and years (D16). Amharic screen text was not requested.**
 - [ ] **Q13.** Should a printed delivery note still go to the customer, and in what layout?
 - [x] **Q14.** Can an **official-receipt** order also receive Personal-account payments? Is the receipt issued once per sale or once per payment? **Answer: no Personal payments on official-receipt sales; one receipt per payment (D3, D14).**
 - [x] **Q15.** Do resellers pay the same selling price as walk-in customers, or is there a wholesale price? **Answer: resellers get a wholesale price (D11).**
@@ -995,8 +996,8 @@ The schedule goes in `app.conf.beat_schedule` in `config/celery.py`.
 | `check_low_stock(product_id)` | `apps/inventory/tasks.py` | on each movement or condition change | If the **sellable** company stock (new pieces, all locations + in transit — D7, D15) is **below** `min_stock`, notify once per day per product. Per-location minimums only if Q18 asks for them |
 | `daily_report` | `apps/reports/tasks.py` | 20:00 every day | Text summary to admins |
 | `weekly_report` | `apps/reports/tasks.py` | Saturday 20:00 | Text summary + Excel file |
-| `monthly_report` | `apps/reports/tasks.py` | 1st of month 08:00 | Text summary + Excel file |
-| `yearly_report` | `apps/reports/tasks.py` | 1 January 08:00 | Text summary + Excel file with monthly breakdown |
+| `monthly_report` | `apps/reports/tasks.py` | daily 08:00; sends on the 1st of an **Ethiopian** month (D16) | Previous Ethiopian month: text summary + Excel file |
+| `yearly_report` | `apps/reports/tasks.py` | daily 08:05; sends on **Meskerem 1** (D16) | Previous Ethiopian year: text summary + Excel file with 13 monthly rows |
 | `nightly_stock_check` | `apps/inventory/tasks.py` | 02:00 | `rebuild_stock_balances --check`; alert admin on mismatch |
 | `expire_link_tokens` | `apps/accounts/tasks.py` | hourly | Delete expired Telegram link codes |
 
