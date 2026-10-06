@@ -1,555 +1,574 @@
-# Furniture ERP — Web UI Page Requirements
+# Furniture ERP — Web UI Design Requirements
 
 **For:** the designer and the frontend developer.
-**Based on:** `userequirements.md`, the decisions D1–D10 in `BUILD_PHASES.md`, and the backend API in `backend/`.
-**Last updated:** 6 Oct 2026 (owner's answers to Q6, Q8, Q9, Q11, Q14, Q15, Q20)
+**Based on:** the client's requirements (`userequirements.md`), decisions D1–D16 in `BUILD_PHASES.md`, and the backend in `backend/` (Phases 1–4 built and tested).
+**Last updated:** 6 Oct 2026
 
-Every page below lists who uses it, what it shows, what the user can do, the rules the screen must respect, and the API it calls. **Phase** says when the backend for it exists:
+This document lists every page of the web app: who uses it, what it shows, what people can do there, the rules it must respect, and the API it calls. The backend for every page exists, except where section 8 says otherwise. Try any endpoint in Swagger at `/api/schema/swagger-ui/` with the demo users (see `backend/README.md`).
 
-- **Ready** — built in Phase 1–2; it can be designed and wired now.
-- **P3** — sales, payments, customers, search and transaction history (Phase 3).
-- **P4** — reports and Excel export (Phase 4).
-
-Until the client answers the open questions (Q1–Q20 in `BUILD_PHASES.md` 1.9), design for the current assumptions. Places marked **[Q…]** may change.
+Places marked **[Q…]** depend on a client answer that is still open (section 9).
 
 ---
 
-## 1. Who uses the system
+## 1. The business in one paragraph
+
+An office-furniture importer with two shops — **Piassa** (the main branch, with a small **Underground** store) and **Denbel** — and the **Pawlos warehouse**, where most stock is kept. Walk-in customers usually pay at once; resellers and out-of-city shops (Jimma, Bahir Dar, Mekele…) often order by phone and buy on credit. Goods leave Pawlos only against a **stock request** from a branch. Money goes either to an **Organization** account (official receipt) or a **Personal** account, and the two must never be confused. The web app replaces the paper delivery pad and the accountant's Excel; Telegram carries alerts and quick actions.
+
+## 2. Who uses it
 
 | Role | Works at | Main jobs on the web |
 | --- | --- | --- |
-| Salesperson | Piassa or Denbel branch | Sell, check stock and prices, create customers, request stock from Pawlos, record payments they are allowed to, follow their own orders and sales |
-| Storekeeper | Pawlos warehouse | See requests, release stock (record the quantity actually released), receive imports, propose stock corrections, view warehouse stock and history |
-| Accountant | Office | See all sales and stock movements, record and verify payments, manage credit, approve stock corrections, run reports and Excel exports |
-| Admin (owner) | Anywhere | Everything above, plus products, prices, users and their permissions, locations, payment accounts, audit log |
+| **Salesperson** | Piassa or Denbel | Sell at the counter and by phone, check stock and prices, create customers, request stock from Pawlos, take payments into the accounts they're allowed, hand over goods, follow **their own** sales |
+| **Storekeeper** | Pawlos | Work the request queue, release stock (the quantity actually taken out), receive imports, mark display/damaged pieces, propose stock corrections |
+| **Accountant** | Office | All sales and stock history, record and verify payments, credit, approve corrections, reports and Excel |
+| **Admin (owner)** | Anywhere | Everything, plus products and prices, users and permissions, locations, payment accounts, settings, audit log |
 
-Locations: **Piassa (PIA)**, **Piassa Underground (PIA-UG)**, **Denbel (DEN)**, **Pawlos warehouse (PAW)**, and the system location **In Transit** (goods between locations). [Q4, Q18: Underground may be merged with Piassa.]
+**Locations:** Piassa (PIA), Piassa Underground (PIA-UG), Denbel (DEN), Pawlos (PAW), and the system location **In Transit** for goods between locations. [Q4, Q18: Underground may be merged into Piassa.]
 
-The bot (Telegram) only notifies and does quick actions. **All selling and payment entry happens on the web (D10).**
+**What stays in Telegram (not the web):** request alerts with Acknowledge/Release buttons for the storekeeper, payment-to-verify alerts, low-stock alerts, the owner's daily/weekly/monthly/yearly reports. Everything the bot does is also possible on the web. **New sales and payments are entered only on the web (D10).**
 
 ---
 
-## 2. Global rules for every page
+## 3. Design rules for every page
 
-### 2.1 Layout
+### 3.1 Layout and devices
 
-- **Desktop first** (the shop counter and office use PCs), but every page must work on a **tablet** (1024 px) and the storekeeper pages on a **phone** (360 px) — the Pawlos storekeeper may release from the floor.
-- **Left sidebar** with the role's menu (section 3). Collapsible on small screens.
-- **Top bar:** global search box (always visible), the user's name, role and home location, a link to **My profile**, and **Log out**.
-- Page header: title, the main action button on the right (for example **New sale**), then filters, then content.
+- **Desktop first** (counter and office PCs); every page must also work on a **tablet (1024 px)**. The storekeeper's pages (P-30–P-33, P-27, P-23) must work on a **phone (360 px)** — releases happen on the warehouse floor.
+- **Left sidebar** with the role's menu (section 4), collapsible. **Top bar:** global search (always visible), today's date (Ethiopian first), the user's name, role and location, **My profile**, **Log out**.
+- **Page header:** title · main action on the right (e.g. **New sale**) · filters · content.
+- **Language:** English screen text; Ethiopian month names appear in Amharic script (e.g. መስከረም). Leave room for longer labels in case Amharic screens are added later.
 
-### 2.2 What each user may see and do
+### 3.2 Permissions decide what is visible
 
-- After login the app calls `GET /api/v1/auth/me/`, which returns `role`, `home_location` and `permissions` (a list).
-- **Menus** follow the role (section 3).
-- **Buttons for sensitive actions** show only when the user has the permission. Hide them rather than disabling them, so salespeople aren't shown buttons they can never use:
+- After login the app calls `GET /api/v1/auth/me/` → `role`, `home_location`, `permissions` (list), `telegram_linked`.
+- **Menus follow the role** (section 4). **Sensitive buttons follow permissions — hide them, don't disable them:**
 
-| Permission | Shows / enables |
-| --- | --- |
-| `view_personal_payments` | Personal-account amounts, totals and report columns. **Every staff member has it by default (D12)**; the admin can remove it from one user — then show the payment exists and its status, with amount and account hidden (show "—"). |
-| `verify_payments` | Verify / Reject buttons on payments |
-| `correct_payments` | Reverse / Correct buttons on payments |
-| `correct_transactions` | Void sale; Reverse movement |
-| `approve_adjustments` | Approve / Reject on stock adjustments |
-| `approve_credit` | Can confirm a sale beyond a customer's credit rules; can edit a customer's credit settings |
-| `approve_discounts` | Discounts above the salesperson limit the owner sets in Settings (P-84) |
-| `export_reports` | **Export Excel** buttons |
+| Permission | Shows | Default roles |
+| --- | --- | --- |
+| `view_personal_payments` | Personal-account amounts, lists, totals. Without it: the payment row exists, amount and account show "—" | everyone (D12) |
+| `verify_payments` | Verify / Reject a payment | accountant |
+| `correct_payments` | Reverse / Correct a payment | accountant |
+| `correct_transactions` | Void a sale; reverse a goods-receipt movement | admin only (granted per accountant) |
+| `approve_adjustments` | Approve / Reject stock adjustments | accountant |
+| `approve_credit` | Confirm a sale beyond the customer's credit; edit credit terms | accountant |
+| `approve_discounts` | Discounts above the owner's limit (P-84) | accountant |
+| `export_reports` | **Export Excel** buttons | accountant |
 
-Admins have every permission.
+Admins have every permission. The server enforces all of this anyway; hiding buttons is for clarity.
 
-### 2.3 Numbers, money and dates
+### 3.3 Money, quantities, dates
 
-- Money: **ETB**, two decimals, thousands separator: `100,000.00 ETB`. The API sends money as text (`"100000.00"`) — never round it in the browser.
-- Quantities are whole numbers. Show the unit (`pcs`, `set`).
-- **Dates (D16): Ethiopian first, Gregorian beside it** — `ጥቅምት 26, 2019 (05/11/2026)` — and time `14:35`, Addis Ababa time. The API sends timestamps in ISO form plus ready-made `…_ec` strings on documents; `GET /calendar/?date=` or `?ec=` converts any date, so every screen matches the printouts. **Date pickers** let staff pick an Ethiopian date (month names መስከረም … ጳጉሜ; Pagume has 5 or 6 days).
-- **There is no cost price, profit or margin anywhere (D1).** Do not design fields for them.
+- **Money:** ETB, two decimals, thousands separators — `100,000.00 ETB`. The API sends money as strings (`"100000.00"`); never do money arithmetic in the browser — show what the API returns.
+- **Quantities:** whole numbers with the unit (`pcs`, `set`).
+- **Dates — Ethiopian first, Gregorian beside it (D16):** `ጥቅምት 26, 2019 (05/11/2026)`, time `14:35`, Addis Ababa time.
+  - Documents in the API carry ready-made strings (`issued_at_ec`, `created_at_ec`, `date_ec`, `at_ec`, `period_label`); for anything else call `GET /api/v1/calendar/?date=YYYY-MM-DD` (or `?ec=YYYY-MM-DD`).
+  - **Date pickers are Ethiopian:** 13 months (መስከረም … ነሐሴ, then ጳጉሜ with 5 or 6 days); send the Gregorian date the calendar endpoint returns.
+- **No cost price, profit or margin anywhere (D1).**
 
-### 2.4 Document numbers (D4)
+### 3.4 Document numbers
 
-Every document has a number: `SO-2026-00125` (sale), `DN-` (delivery note), `SR-` (stock request), `SRL-` (release), `TR-` (transfer), `GR-` (goods receipt), `ADJ-` (adjustment), `PAY-` (payment), `MV-` (stock movement).
+`SO-2026-00125` sale · `DN-` delivery note · `SR-` stock request · `SRL-` release · `TR-` transfer · `GR-` goods receipt · `ADJ-` adjustment · `CC-` condition change · `PAY-` payment · `RET-` return · `MV-` movement.
 
-- The **sale number (SO) is the transaction number**: every related document shows it. A stock request with no sale uses its own SR number.
-- Every document number on every page is a **link** to that document, and every transaction number is a link to its **Transaction history** page (P-05).
-- Show numbers in a monospace font so they're easy to read aloud on the phone.
+- The **sale number (SO) is the transaction number (D4)** — every related request, release, transfer, delivery note and movement carries it. A request with no sale uses its own SR number.
+- Every number is a **link** to its document; every transaction number also opens **Transaction history** (P-05).
+- Numbers in a **monospace** font — people read them aloud on the phone.
 
-### 2.5 Status chips (one colour per meaning, used everywhere)
+### 3.5 Status chips — one colour per meaning, everywhere
 
-| Object | Statuses (in order) |
+| Object | Statuses |
 | --- | --- |
 | Stock request | Pending · Acknowledged · Partially released · Released · Closed · Rejected · Cancelled |
-| Sale (fulfilment) | Draft · Pending · Confirmed · Prepared · Partially released · Released · Cancelled · Voided |
-| Sale (payment) | Unpaid · Partial · Paid |
+| Sale — fulfilment | Draft · Pending · Confirmed · Prepared · Partially released · Released · Cancelled · Voided |
+| Sale — payment | Unpaid · Partial · Paid |
 | Payment | Unverified · Verified · Rejected · Reversed |
-| Transfer | In transit · Received (+ "Short" warning when less arrived than was sent) |
+| Transfer | In transit · Received, plus a **Short** warning when less arrived than was sent |
 | Stock adjustment | Proposed · Approved · Rejected |
-| Payment account kind | **Organization** and **Personal** — two strong, different colours; this difference must be obvious on every payment row (D3) |
+| Stock condition | New · Display · Damaged |
+| Account kind | **Organization** and **Personal** — two strong, distinct colours, visible on every payment row (D3) |
 
-Suggested colour meaning: grey = not started, blue = in progress, green = done, amber = needs attention (unverified, partial, low stock, short receipt), red = rejected/cancelled/voided/reversed.
+Grey = not started · blue = in progress · green = done · amber = needs attention (unverified, partial, low stock, short, display/damaged) · red = rejected, cancelled, voided, reversed.
 
-### 2.6 Errors, confirmations and empty states
+### 3.6 Errors, confirmations, empty states
 
-- The API returns business errors as `400 {"code": "...", "detail": "..."}`. Show `detail` in a clear message next to the form or as a banner. It is already written for staff ("Only 3 VC-001 available at PIA.").
-- Field errors come as `400 {"field_name": ["message"]}` — show them under the field.
-- `403` → "You don't have permission to do this." `401` → back to login (session expired).
-- **Every action that changes stock or money opens a confirmation** that repeats what will happen ("Release 15 × VC-001 to Piassa?").
-- **Reject, Cancel, Close, Void, Reverse and Correct always ask for a reason** (required text box). The reason is shown later in the history.
-- Lists have an empty state ("No open requests") and a loading state. Long lists are paginated (25 per page, from the API).
+- **Business errors:** `400 {"code": "...", "detail": "..."}` — show `detail` (already written for staff, e.g. "Only 3 VC-001 available at PIA.") in a banner or by the field. **Field errors:** `400 {"field": ["message"]}` under the field.
+- `401` → back to login. `403` → "You don't have permission to do this." `404` → "Not found or not yours to see."
+- **Every action that changes stock or money opens a confirmation** restating it ("Release 15 × VC-001 to Piassa?").
+- **Reject, Cancel, Close, Void, Reverse, Correct and condition changes always ask for a reason** (required); the reason shows later in history.
+- Lists: loading state, empty state ("No open requests 👍"), 25 per page (API pagination: `count`, `next`, `previous`, `results`).
 
-### 2.7 Things that never exist in the UI
+### 3.7 Things that never appear
 
-- No **delete** for products, users, locations, customers, sales, payments, stock movements. Things are deactivated, cancelled, voided or reversed — never deleted.
-- No direct edit of stock numbers. Stock changes only through receipts, requests/releases, transfers, sales, returns and approved adjustments.
-- No editing a price inside a sale — the price always comes from the product (discount is the only adjustment).
+- **No delete** for anything that matters (products, users, locations, customers, sales, payments, movements). Things are deactivated, cancelled, voided or reversed.
+- **No direct editing of stock numbers** — only through receipts, requests/releases, transfers, sales, returns, condition changes and approved adjustments.
+- **No typed prices on a sale** — the price comes from the product (wholesale for resellers); a discount is the only adjustment.
 
 ---
 
-## 3. Navigation per role
+## 4. Navigation per role
 
-| Menu item | Salesperson | Storekeeper | Accountant | Admin |
+| Menu | Salesperson | Storekeeper | Accountant | Admin |
 | --- | --- | --- | --- | --- |
-| Home (dashboard) | ✓ | ✓ | ✓ | ✓ |
+| Home | ✓ | ✓ | ✓ | ✓ |
 | New sale | ✓ | | ✓ | ✓ |
-| Sales / Orders | own only | | all | all |
-| Payments | own only | | all | all |
+| Sales | own | sales it supplies | all | all |
+| Payments | own | | all | all |
 | Payments to verify | | | ✓ | ✓ |
 | Customers & credit | ✓ | | ✓ | ✓ |
 | Products | view | view | view | edit |
-| Stock (all locations) | ✓ | ✓ | ✓ | ✓ |
-| Stock requests | own branch | own warehouse | all (view) | all |
+| Stock | ✓ | ✓ | ✓ | ✓ |
+| Display & damaged | own branch | own warehouse | ✓ | ✓ |
+| Stock requests | own branch | own warehouse | view all | all |
 | Transfers | own location | own location | all | all |
 | Goods receipts | | own warehouse | ✓ | ✓ |
 | Stock adjustments | | propose | approve | ✓ |
 | Stock movements | | own location | all | all |
-| Reports | own sales | stock | ✓ | ✓ |
+| Reports | own sales | stock, movements, open requests | all | all |
 | Audit log | | | view | ✓ |
-| Users & permissions | | | | ✓ |
-| Locations | | | | ✓ |
-| Payment accounts | | | | ✓ |
+| Users & permissions · Locations · Payment accounts · Settings | | | | ✓ |
 | My profile | ✓ | ✓ | ✓ | ✓ |
 
 ---
 
-## 4. Page list
+## 5. Shared components (design once, use everywhere)
 
-| # | Page | Users | Phase |
-| --- | --- | --- | --- |
-| P-01 | Login | all | Ready |
-| P-02 | Home dashboard (one per role) | all | Ready (stock parts) / P3 / P4 |
-| P-03 | My profile (link Telegram) | all | Ready |
-| P-04 | Global search results | all | P3 (products: Ready) |
-| P-05 | Transaction history | all | P3 |
-| P-10 | Products list | all | Ready |
-| P-11 | Product detail | all | Ready |
-| P-12 | Product create / edit | admin | Ready |
-| P-13 | Change price (dialog) | admin | Ready |
-| P-14 | Import products | admin | Ready (command; upload page needs an endpoint) |
-| P-20 | Stock overview (matrix) | all | Ready |
-| P-21 | Low stock | all | Ready |
-| P-22 | Stock movements | storekeeper, accountant, admin | Ready |
-| P-23 | Goods receipts list + New receipt | storekeeper, accountant, admin | Ready |
-| P-24 | Stock adjustments list + Propose + Approve | storekeeper, accountant, admin | Ready |
-| P-25 | Transfers list + detail + Receive | all | Ready |
-| P-26 | New manual transfer | accountant, admin | Ready |
-| P-27 | Display and damaged stock | staff at the location, accountant, admin | Ready |
-| P-30 | Stock requests list | salesperson, storekeeper, accountant, admin | Ready |
-| P-31 | New stock request | salesperson, admin | Ready |
-| P-32 | Stock request detail (acknowledge, release, reject, cancel, close) | all | Ready |
-| P-33 | Release stock (dialog / page) | storekeeper, admin | Ready |
-| P-40 | New sale (counter sale and phone order) | salesperson, accountant, admin | P3 |
-| P-41 | Sales / orders list | salesperson (own), accountant, admin | P3 |
-| P-42 | Sale detail | all who can see it | P3 |
-| P-43 | Delivery note (print / PDF) | salesperson, storekeeper, accountant, admin | P3 |
-| P-44 | Phone orders board | salesperson, storekeeper, accountant, admin | P3 |
-| P-45 | Return goods / Void sale (dialogs) | per permission | P3 |
-| P-50 | Record payment | salesperson (allowed accounts), accountant, admin | P3 |
-| P-51 | Payments list | salesperson (own), accountant, admin | P3 |
-| P-52 | Payments to verify | accountant, admin | P3 |
-| P-53 | Payment detail (verify, reject, reverse, correct, allocate) | accountant, admin | P3 |
-| P-60 | Customers list | salesperson, accountant, admin | P3 |
-| P-61 | Customer detail (balance, statement) | salesperson, accountant, admin | P3 |
-| P-62 | Customer create / edit (credit settings) | salesperson; credit fields `approve_credit` | P3 |
-| P-70 | Reports home + 7 reports | per role | P4 |
-| P-80 | Users list + User create / edit (permissions) | admin | Ready |
-| P-81 | Locations | admin | Ready |
-| P-82 | Payment accounts | admin | P3 |
-| P-83 | Audit log | accountant, admin | Ready |
-| P-84 | Settings (discount limit) | admin | P3 |
+| Component | Behaviour |
+| --- | --- |
+| **Product picker** | Type a code or name → suggestions with code, name, price (wholesale when the customer is a reseller) and stock at the relevant locations. `GET /products/?search=` + `GET /products/{id}/stock/` |
+| **Customer picker** | Search name / phone / shop; a **Walk-in customer** shortcut; **+ New customer** opens P-62 in a side panel. `GET /customers/?search=` |
+| **Ethiopian date picker** | Month grid of 30 days (Pagume 5–6), Ethiopian year; shows the Gregorian date beneath. `GET /calendar/` |
+| **Period picker** | Today · This week · This month · This year (Ethiopian months/years, with a Gregorian switch) · Custom range |
+| **Money display / input** | `100,000.00 ETB`; input accepts digits and one decimal point, two decimals max |
+| **Quantity stepper** | − / + with a typed value; shows the maximum allowed ("of 20") |
+| **Reason dialog** | Required text, shows what will happen, Confirm / Cancel |
+| **Confirm dialog** | Restates the action, quantities and locations |
+| **Document link** | Monospace number, opens the document; transaction numbers also offer History |
+| **Status chip** | Section 3.5 |
+| **Account-kind badge** | Organization / Personal, always together with the account name |
+| **Stock cell** | On hand, with small badges for reserved, display, damaged; hover shows available |
 
 ---
 
-## 5. Pages
+## 6. Page list
 
-### P-01 Login — Ready
+| # | Page | Users |
+| --- | --- | --- |
+| P-01 | Login | all |
+| P-02 | Home dashboard (per role) | all |
+| P-03 | My profile & Telegram link | all |
+| P-04 | Search results | all |
+| P-05 | Transaction history | all |
+| P-10 | Products | all |
+| P-11 | Product detail | all |
+| P-12 | Product create / edit | admin |
+| P-13 | Change price (dialog) | admin |
+| P-14 | Import products | admin — *needs an endpoint (section 8)* |
+| P-20 | Stock overview (matrix) | all |
+| P-21 | Low stock | all |
+| P-22 | Stock movements | storekeeper, accountant, admin |
+| P-23 | Goods receipts | storekeeper, accountant, admin |
+| P-24 | Stock adjustments | storekeeper (propose), accountant, admin |
+| P-25 | Transfers (list, detail, receive) | all |
+| P-26 | New manual transfer | accountant, admin |
+| P-27 | Display & damaged stock | staff at the location, accountant, admin |
+| P-30 | Stock requests | salesperson, storekeeper, accountant, admin |
+| P-31 | New stock request | salesperson, admin |
+| P-32 | Stock request detail | all who can see it |
+| P-33 | Release stock | storekeeper, admin |
+| P-40 | New sale | salesperson, accountant, admin |
+| P-41 | Sales list | salesperson (own), storekeeper (supplied), accountant, admin |
+| P-42 | Sale detail | same |
+| P-43 | Delivery note (print / PDF) | same |
+| P-44 | Phone orders board | salesperson, storekeeper, accountant, admin |
+| P-45 | Return goods · Void sale (dialogs) | accountant, admin · `correct_transactions` |
+| P-50 | Record payment | salesperson (allowed accounts), accountant, admin |
+| P-51 | Payments | salesperson (own), accountant, admin |
+| P-52 | Payments to verify | `verify_payments` |
+| P-53 | Payment detail | salesperson (own), accountant, admin |
+| P-60 | Customers | salesperson, accountant, admin |
+| P-61 | Customer detail & statement | same |
+| P-62 | Customer create / edit | same; credit fields need `approve_credit` |
+| P-70 | Reports (7) | per role |
+| P-80 | Users & permissions | admin |
+| P-81 | Locations | admin (others read) |
+| P-82 | Payment accounts | admin (others read) |
+| P-83 | Audit log | accountant (read), admin |
+| P-84 | Settings | admin (everyone reads) |
 
-- **Shows:** username, password, **Log in** button. Company name/logo.
-- **Rules:** a wrong username or password returns `401` → show "Wrong username or password." After 5 wrong passwords the account is locked for 30 minutes and login returns `403 {"code": "account_locked"}` → show "Too many failed attempts. Try again in 30 minutes." Sessions use tokens that last 15 minutes and refresh automatically for 7 days; the user should only be asked to log in again after a week of inactivity or after logging out.
-- **API:** `POST /api/v1/auth/token/` → `access`, `refresh`; `POST /api/v1/auth/refresh/`; then `GET /api/v1/auth/me/`.
+---
 
-### P-02 Home dashboard — one per role
+## 7. Pages
 
-Short, actionable. Every tile is a link to the filtered list behind it.
+### P-01 Login
 
-| Role | Tiles and lists |
+- Username, password, **Log in**; company name/logo.
+- Wrong username or password → `401` → "Wrong username or password." After 5 failures the account is locked for 30 minutes → `403 {"code": "account_locked"}` → "Too many failed attempts. Try again in 30 minutes."
+- Access tokens last 15 minutes and refresh silently (refresh token 7 days) — users log in again only after a week away or after logging out.
+- **API:** `POST /auth/token/ {username, password}` → `access`, `refresh` · `POST /auth/refresh/ {refresh}` · `GET /auth/me/`.
+
+### P-02 Home dashboard
+
+Short and actionable; every tile links to its filtered list.
+
+| Role | Contents |
 | --- | --- |
-| Salesperson | Quick search box (product code → stock card) · **New sale** button · My open stock requests (status) · Transfers arriving at my branch (to receive) · My sales today (total, count) [P3] · My orders waiting for payment [P3] |
-| Storekeeper | **Requests waiting** (Pending, then Acknowledged/Partially released) — the main screen, newest first, with branch, customer, salesperson and lines · Warehouse stock alerts (low stock) · Recent movements at Pawlos · Outgoing transfers not yet received |
-| Accountant | Payments to verify (count + list) [P3] · Today: sales, paid, credit, Organization vs Personal received [P3/P4] · Adjustments waiting for approval · Transfers with shortages · Customers over credit limit [P3] |
-| Admin | Everything the accountant sees + low-stock products + today's sales by branch and by salesperson [P4] |
+| Salesperson | Search box (product code → stock card) · **New sale** · my sales today (total, count) · my sales waiting for payment · my open stock requests · transfers arriving at my branch (Receive) · goods held at my branch for my customers |
+| Storekeeper | **Request queue** — Pending, then Acknowledged / Partially released, newest first, with branch, customer, salesperson and lines (the main screen) · low stock · recent movements at my warehouse · my transfers not yet received |
+| Accountant | Payments to verify (count + list) · today: sales, paid, credit, received Organization / Personal · adjustments to approve · transfers with shortages · customers over their limit *(section 8)* |
+| Admin | The accountant's dashboard + low-stock products + today's sales by branch and salesperson |
 
-**API (Ready):** `GET /stock-requests/?status=…`, `GET /transfers/?status=in_transit`, `GET /stock/summary/?low=true`, `GET /stock/movements/`, `GET /adjustments/?status=proposed`.
+**API:** `GET /reports/sales/?period=day` · `GET /payments/?status=unverified` · `GET /stock-requests/?status=` · `GET /transfers/?status=in_transit&to_location=` · `GET /stock/summary/?low=true` · `GET /stock/movements/` · `GET /adjustments/?status=proposed` · `GET /orders/?payment_status=unpaid`.
 
-### P-03 My profile — Ready
+### P-03 My profile
 
-- **Shows:** name, username, role, home location, phone, the permissions the user has (readable names from `GET /permissions/`).
-- **Link Telegram:** button **Get link code** → shows an 8-character code (large, copyable), and instructions: "Open the bot and send /start CODE. The code expires in 10 minutes." Show whether Telegram is already linked (`telegram_linked`), with **Unlink** for a lost phone.
-- **API:** `GET /auth/me/`, `POST /auth/telegram/link-code/` → `{code, expires_at}`, `POST /auth/telegram/unlink/`, `GET /permissions/`.
+- Name, username, role, home location, phone; the user's permissions with readable labels.
+- **Telegram:** linked or not (`telegram_linked`). **Get link code** → an 8-character code, large and copyable, with "Send `/start CODE` to the bot within 10 minutes." **Unlink** (lost phone).
+- **API:** `GET /auth/me/` · `POST /auth/telegram/link-code/` → `{code, expires_at}` · `POST /auth/telegram/unlink/` · `GET /permissions/`.
 
-### P-04 Global search results — P3 (products Ready)
+### P-04 Search results
 
-The top-bar search accepts anything (requirement "Search"):
+The top-bar search accepts anything.
 
-| Typed | Result group |
+| Typed | Shows |
 | --- | --- |
-| Product code or name (`VC-001`, `visitor chair`) | **Product card first:** name, code, price, stock per location (Piassa, Underground, Denbel, Pawlos), in transit, **total** |
-| Customer name, phone, shop name | Customers with outstanding balance |
-| SO / DN / SR / SRL / TR / PAY / MV number | The document; transaction numbers open P-05 |
-| Receipt number | The payment(s) |
+| Product code or name (`VC-001`) | **Product card first:** name, code, price (and wholesale), stock per location, in transit, total |
+| Customer name, phone, shop | Customers with what they owe |
+| SO / DN / SR / PAY number, or a customer's phone | The sale, delivery note, request or payment |
+| Receipt number | The payment |
 
-- Filters on the results page: salesperson, branch, date from/to.
-- An exact product code or document number jumps straight to its page.
-- Personal-account payments are hidden from users without `view_personal_payments`.
-- **API:** `GET /search/?q=&salesperson=&branch=&from=&to=` [P3]. Until then: `GET /products/?search=` and `GET /products/{id}/stock/`.
+- When the API returns `exact`, jump straight to that page (product or document).
+- Filters: salesperson, branch, from, to. Results respect the user's scope (a salesperson never sees others' sales; Personal amounts follow the permission).
+- **API:** `GET /search/?q=&salesperson=&branch=&from=&to=` → `exact`, `products`, `customers`, `orders`, `delivery_notes`, `stock_requests`, `payments`.
 
-### P-05 Transaction history — P3
+### P-05 Transaction history
 
-The digital version of "the same delivery paper everyone tracks". Opened from any number.
+"The same delivery paper everyone tracks" — opened from **any** related number (SO, DN, SR, SRL, TR, MV, PAY, RET).
 
-- **Header:** transaction number, customer, salesperson, branch, source → destination, status chips (fulfilment + payment), totals (total, paid, remaining).
-- **Products:** code, name, quantity, released so far.
-- **Timeline (newest at the bottom, or toggle):** created · confirmed · stock requested · acknowledged · released (qty) · transferred · received (shortages in amber) · delivery note issued · payment recorded (amount, **Organization/Personal**, who) · verified / rejected / reversed / corrected · voided · re-issued as … — each with **who, date-time and reason**.
-- Links from every event to its document.
-- **API:** `GET /transactions/{number}/` or `GET /orders/{id}/history/` [P3].
+- **Header:** transaction number, customer, salesperson, branch, receipt type, status chips, total · paid · remaining, "Replaces SO-…" when re-issued.
+- **Products:** code, name, quantity, released, returned, source.
+- **Timeline:** created · confirmed · prepared · stock requested · acknowledged · released · received (shortage in amber) · handed over (DN) · payment recorded (amount, Organization/Personal) · verified · rejected · reversed · corrected · returned · cancelled / voided · re-issued — each with **who, when (Ethiopian first, `at_ec`) and reason**, linking to its document.
+- **API:** `GET /transactions/{number}/` (or `GET /orders/{id}/history/`) → `header`, `events`.
 
-### P-10 Products list — Ready
+### P-10 Products
 
-- **Columns:** code, name, category, unit, selling price, **wholesale price** (what resellers pay; empty = same as selling), min stock, total stock (optional, from P-20), active.
-- **Filters:** search (code or name), category, active/inactive. Sort by code, name, price.
-- **Actions:** row → P-11. Admin: **New product**, **Import products**.
-- **No cost price column (D1).**
-- **API:** `GET /products/?search=&category=&is_active=&ordering=`, `GET /categories/`, `GET /units/`.
+- **Columns:** code, name, category, unit, selling price, **wholesale price** (resellers; empty = selling price), min stock, active.
+- **Filters:** search (code/name), category, active. Sort: code, name, price.
+- **Actions:** row → P-11; admin: **New product**, **Import products**.
+- **API:** `GET /products/?search=&category=&is_active=&ordering=` · `GET /categories/` · `GET /units/`.
 
-### P-11 Product detail — Ready
+### P-11 Product detail
 
-- **Shows:** code, name, category, unit, selling price, wholesale price, min stock, description, active.
-- **Stock card:** per location on hand / reserved / available, In transit, Total, low-stock warning when total < min stock.
-- **Price history:** date, **which price** (selling / wholesale), old price, new price, changed by, reason.
-- **Recent movements** (for storekeeper/accountant/admin): date, type, qty, from → to, transaction number.
-- **Admin actions:** Edit, Change price, Deactivate.
-- **API:** `GET /products/{id}/`, `GET /products/{id}/stock/`, `GET /products/{id}/price-history/`, `GET /stock/movements/?product={id}`.
+- Code, name, category, unit, selling price, wholesale price, min stock, description, active.
+- **Stock card:** per location on hand / reserved / display / damaged / available; in transit; total and **sellable** total; low-stock warning when sellable < min stock.
+- **Price history:** date, **which price** (selling / wholesale), old → new, who, reason.
+- **Recent movements** (stock staff): date, type, condition, qty, from → to, transaction.
+- **Admin:** Edit · Change price · Deactivate.
+- **API:** `GET /products/{id}/` · `/products/{id}/stock/` · `/products/{id}/price-history/` · `GET /stock/movements/?product=`.
 
-### P-12 Product create / edit — Ready (admin)
+### P-12 Product create / edit (admin)
 
-- **Fields:** code (stored in capitals; must be unique), name, category, unit, selling price and wholesale price (both create only; wholesale optional), min stock, description, active.
-- **Rules:** on edit, both prices are **read-only** with a **Change price** button next to each (P-13). Prices must be > 0; the wholesale price cannot be higher than the selling price (error code `wholesale_above_selling`).
-- **API:** `POST /products/`, `PATCH /products/{id}/`.
+- Code (stored in capitals, unique), name, category, unit, selling price and optional wholesale price (**set on create only**), min stock, description, active.
+- On edit both prices are read-only with a **Change price** button next to each (P-13).
+- Errors: price ≤ 0; wholesale above selling (`wholesale_above_selling`); duplicate code.
+- **API:** `POST /products/` · `PATCH /products/{id}/`.
 
-### P-13 Change price (dialog) — Ready (admin)
+### P-13 Change price (dialog, admin)
 
-- **Fields:** which price (selling / wholesale), current value (read-only), new price, reason (optional but encouraged).
-- **Rules:** new price > 0 and different from the current one; wholesale never above selling (lowering the selling price below the wholesale price is refused — lower the wholesale price first). Old sales keep their old price — say so in the dialog.
-- **API:** `POST /products/{id}/change-price/ {price_type: "selling"|"wholesale", new_price, reason}`.
+- Which price (selling / wholesale), current value, new value, reason.
+- New value > 0 and different; wholesale never above selling — to lower the selling price below the wholesale price, lower the wholesale price first. "Sales already made keep their price."
+- **API:** `POST /products/{id}/change-price/ {price_type, new_price, reason}`.
 
-### P-14 Import products — Ready as a server command
+### P-14 Import products (admin)
 
-- Page: **Download template** → upload the filled `.xlsx` → **Check file** (dry run: "would create 120, update 4, change 3 prices") → list of row errors if any ("row 7: unknown unit 'boxes'") → **Import**. Nothing is imported if any row has an error.
-- **API:** today this is `manage.py import_products` on the server. A web upload needs a small endpoint — tell the backend before designing this page in detail.
+- **Download template** → upload the filled `.xlsx` → **Check** (dry run: "would create 120, update 4, change 3 prices") → row errors if any ("row 7: unknown unit 'boxes'") → **Import**. One bad row stops the whole import.
+- Template columns: Code, Name, Category, Unit, Price, Wholesale price, Min stock, Description.
+- **API:** server command today (`manage.py import_products`); the web page needs an upload endpoint — section 8.
 
-### P-20 Stock overview (matrix) — Ready
+### P-20 Stock overview (matrix)
 
 The client's "Current stock" table.
 
-| Product | Piassa | Underground | Denbel | Pawlos | In transit | **Total** |
-| --- | --- | --- | --- | --- | --- | --- |
-| VC-001 Visitor chair | 25 | 0 | 5 | 85 (5 reserved) | 0 | **115** |
+| Product | Piassa | Underground | Denbel | Pawlos | In transit | **Total** | Sellable |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VC-001 Visitor chair | 25 *(1 display)* | 0 | 5 | 85 *(5 reserved)* | 0 | **115** | 114 |
 
-- Each location cell shows **on hand**; small badges show **reserved** (held for requests or sales), **display** and **damaged** (D15); hover shows available (new stock free to sell).
-- **Total includes In transit (D7).** A second total shows **sellable** stock (`total_new`, without display and damaged pieces). Low-stock rows (sellable < min stock) are highlighted.
-- **Filters:** search, category, low stock only. Pagination by product.
-- **Actions:** row → P-11. Export Excel [P4, `export_reports`].
-- **API:** `GET /stock/summary/?search=&category=&low=true` → `locations` (column order) and `results` (rows: `stock[code].on_hand/reserved/available`, `in_transit`, `total`, `low_stock`).
+- Each cell: on hand, with small badges for **reserved**, **display**, **damaged**; hover shows available.
+- **Total includes In transit (D7).** **Sellable** excludes display and damaged (D15). Low-stock rows (sellable < min) highlighted.
+- Filters: search, category, low only. Paginated by product. Export Excel (`export_reports`, via P-70 Stock).
+- **API:** `GET /stock/summary/?search=&category=&low=true` → `locations` (column order) and `results[]`: `stock[code] = {on_hand, reserved, display, damaged, available}`, `in_transit`, `total`, `total_new`, `low_stock`.
 
-### P-27 Display and damaged stock — Ready (D15)
+### P-21 Low stock
 
-- **List:** CC number, date, location, product, quantity, from → to (new / display / damaged), reason, who. Staff see their own location.
-- **New change (staff at the location, accountant, admin):** location, product, quantity, from condition, to condition, reason (required). Shows how many of the "from" condition are free there.
-- Common uses: **Put on display**, **Mark damaged**, **Back to new** (repaired / taken off display).
-- **Writing off** damaged pieces is a stock adjustment with condition "damaged" (P-24, needs approval). **Sending for repair** is a transfer line with condition "damaged" (P-26).
+P-20 with `low=true`, plus each product's minimum and the shortfall (min − sellable). [Q18: minimum per location?]
+
+### P-22 Stock movements
+
+- **Columns:** date (EC first), MV number, type (Receipt · Transfer out · Transfer in · Sale · Return · Adjustment · Reversal), **condition**, product, qty, from, to, customer, person, transaction, note.
+- **Filters:** product, location, type, transaction, from, to; search. Storekeepers see their own location only.
+- **Reverse** — only on goods-receipt movements, with `correct_transactions` and a reason. Other movements are corrected through their document; don't show the button.
+- **API:** `GET /stock/movements/?product=&location=&type=&transaction=&from=&to=` · `POST /stock/movements/{id}/reverse/ {reason}`.
+
+### P-23 Goods receipts
+
+Imported goods arriving (usually at Pawlos). [Q1]
+
+- **List:** GR number, date, location, reference (container / invoice), received by.
+- **New:** location (default Pawlos; storekeepers only their own), reference, date received, note, lines (product picker + quantity; one line per product).
+- Confirm: "Add 40 × VC-001, 12 × DS-003 to Pawlos?"
+- **API:** `GET/POST /goods-receipts/ {location?, reference, received_at?, note, lines:[{product, qty}]}`.
+
+### P-24 Stock adjustments
+
+Counts, damage, loss, found items, opening balances, write-offs.
+
+- **List:** ADJ number, date, location, product, change (+/− coloured), condition, reason, status, proposed by, decided by.
+- **Propose** (storekeeper at own location, accountant, admin): location, product, change, **condition** (new / display / damaged — e.g. write off 2 damaged chairs: −2, damaged), reason (count, damage, loss, found, opening balance), note.
+- **Approve / Reject** (`approve_adjustments`; reject needs a note). **Nobody approves their own proposal** except an admin — hide Approve on your own rows. Nothing moves until approved: say "Waiting for approval".
+- **API:** `GET/POST /adjustments/` · `POST /adjustments/{id}/approve/ {note}` · `…/reject/ {note}`.
+
+### P-25 Transfers
+
+- **List:** TR number, sent, from → to, status, **Short**, transaction, linked request. Tabs: Incoming · Outgoing · All (accountant/admin).
+- **Detail:** lines with condition, qty sent, qty received; discrepancy note.
+- **Receive** (staff at the destination): each line defaults to the full quantity; lower it if fewer arrived ("2 still in transit — the accountant will be told"). Received once only. Goods for a sale are then **held** at the branch for that customer.
+- **API:** `GET /transfers/?status=&from_location=&to_location=` · `GET /transfers/{id}/` · `POST /transfers/{id}/receive/ {lines:[{line_id, qty}]}` (empty body = all arrived).
+
+### P-26 New manual transfer (accountant, admin)
+
+Moves stock without a request (e.g. Piassa → Denbel, or a damaged piece to Pawlos for repair). [Q3]
+
+- From, to (different, never In Transit), lines (product, qty, **condition**), note.
+- **API:** `POST /transfers/ {from_location, to_location, lines:[{product, qty, condition}], note}`.
+
+### P-27 Display & damaged stock (D15)
+
+- **List:** CC number, date, location, product, qty, from → to condition, reason, who. Staff see their own location.
+- **New change** (staff at that location, accountant, admin): location, product, qty, from, to, reason (required); show how many of the "from" condition are free there.
+- Quick actions: **Put on display** · **Mark damaged** · **Back to new** (repaired / off display).
+- Display and damaged pieces stay in the location's total but are never reserved or sold as new; they are sold as such on P-40 (usually with a discount), written off on P-24, sent for repair on P-26.
 - **API:** `GET/POST /stock/condition-changes/ {product, location, qty, from_condition, to_condition, reason}`.
 
-### P-21 Low stock — Ready
-
-Same as P-20 with `low=true`, plus the minimum per product and how many are missing (min − total). [Q18: minimum may become per location.]
-
-### P-22 Stock movements — Ready
-
-- **Columns:** date-time, MV number, type (Receipt, Transfer out, Transfer in, Sale, Return, Adjustment, Reversal), product, qty, from, to, customer, person, transaction number, note.
-- **Filters:** product, location, type, transaction number, date from/to; search.
-- **Scope:** storekeepers see only movements at their own location.
-- **Action:** **Reverse** on goods-receipt movements only (`correct_transactions`; reason required). Other movements are corrected through their document — don't show the button.
-- **API:** `GET /stock/movements/?product=&location=&type=&transaction=&from=&to=`, `POST /stock/movements/{id}/reverse/ {reason}`.
-
-### P-23 Goods receipts — Ready
-
-When imported goods arrive (usually at Pawlos). [Q1]
-
-- **List:** GR number, date, location, reference (container/invoice no.), received by, number of lines.
-- **New receipt form:** location (default Pawlos; storekeepers only their own), reference, date received, note, **lines** (product picker with code search + quantity; add/remove rows; one line per product).
-- **Confirm:** "Add 40 × VC-001, 12 × DS-003 to Pawlos?"
-- **API:** `GET/POST /goods-receipts/` — body `{location?, reference, received_at?, note, lines:[{product, qty}]}`.
-
-### P-24 Stock adjustments — Ready
-
-For counts, damage, loss, found items and opening balances.
-
-- **List:** ADJ number, date, location, product, change (+/−, coloured), reason, status, proposed by, decided by.
-- **Propose form (storekeeper at own location, accountant, admin):** location, product, change (positive adds, negative removes), **condition** (new / display / damaged — e.g. write off damaged pieces), reason (count, damage, loss, found, opening balance), note.
-- **Approve / Reject (`approve_adjustments`):** approve note optional, reject note required. **You cannot approve your own proposal** unless you are admin — hide Approve on your own rows.
-- Nothing moves until approved — say "Waiting for approval" clearly.
-- **API:** `GET/POST /adjustments/`, `POST /adjustments/{id}/approve/ {note}`, `POST /adjustments/{id}/reject/ {note}`.
-
-### P-25 Transfers — Ready
-
-- **List:** TR number, date sent, from → to, status, transaction number, linked stock request, **Short** warning.
-- **Tabs:** Incoming (to my location) · Outgoing · All (accountant/admin).
-- **Detail:** lines with qty sent and qty received; discrepancy note.
-- **Receive (staff at the destination):** each line defaults to the full quantity; staff can lower it if fewer arrived. Show "2 still in transit — the accountant will be told" before confirming. A transfer can be received once.
-- **API:** `GET /transfers/?status=&from_location=&to_location=`, `GET /transfers/{id}/`, `POST /transfers/{id}/receive/ {lines:[{line_id, qty}]}` (empty body = everything arrived).
-
-### P-26 New manual transfer — Ready (accountant, admin)
-
-Moves stock between locations without a stock request (for example Piassa → Denbel). [Q3]
-
-- **Fields:** from, to (not the same; never In Transit), lines (product + qty + condition: new, display or damaged — e.g. a damaged piece sent to Pawlos for repair), note.
-- **API:** `POST /transfers/ {from_location, to_location, lines, note}`.
-
-### P-30 Stock requests list — Ready
+### P-30 Stock requests
 
 The digital delivery paper from a branch to Pawlos.
 
-- **Columns:** SR number, date, requesting branch, customer / reference, salesperson, lines summary ("20 × VC-001, 2 × DS-003"), status, released / requested.
-- **Scope:** salesperson — own branch; storekeeper — own warehouse; accountant/admin — all.
-- **Storekeeper default view:** Pending first, then Acknowledged and Partially released (the work queue). Sound/visual highlight for new requests is welcome.
-- **Filters:** status, branch, customer, salesperson; search (number, reference, customer, product code).
+- **Columns:** SR number, date, branch, customer / reference, salesperson, lines ("20 × VC-001, 2 × DS-003"), status, released / requested, transaction (SO when it serves a sale).
+- **Scope:** salespeople their branch; storekeepers their warehouse; accountant/admin all.
+- **Storekeeper default:** Pending first, then Acknowledged and Partially released — the work queue. A visual/sound cue for new requests is welcome.
+- **Filters:** status, branch, source, customer, salesperson; search (number, transaction, reference, customer, product code).
 - **API:** `GET /stock-requests/?status=&requesting_location=&source_location=&customer=&salesperson=&search=`.
 
-### P-31 New stock request — Ready (salesperson, admin)
+### P-31 New stock request (salesperson, admin)
 
-The requirement's request content: date, requesting branch, product name, code, quantity, customer/order reference, salesperson, notes.
+For restocking the branch. (Requests for a customer's sale are created automatically by P-40.)
 
-- **Fields:** requesting branch (default: my branch; salespeople cannot change it), source (default Pawlos), customer (optional; required if the customer will collect at Pawlos), reference (free text, e.g. "ABC Furniture, phone order"), notes, **lines** (product search by code/name showing **available at Pawlos**, quantity).
-- **Rules:** quantity cannot exceed what is free at Pawlos — show available next to each line and the error "Only 12 VC-001 available at PAW." Storekeepers cannot create requests.
-- **After saving:** show the SR number large ("Tell the customer: SR-2026-00014") — later the SO number [P3].
+- Branch (default mine; salespeople can't change it), source (default Pawlos), customer (optional; needed for pickup at Pawlos), reference, notes, lines (product picker showing **available at Pawlos**, quantity).
+- Quantity can't exceed what's free at Pawlos ("Only 12 VC-001 available at PAW."). Storekeepers can't create requests.
+- After saving: the SR number in large type.
 - **API:** `POST /stock-requests/ {requesting_location?, source_location?, customer?, reference, notes, lines:[{product, qty}]}`.
 
-### P-32 Stock request detail — Ready
+### P-32 Stock request detail
 
-- **Header:** SR number, transaction number, status chip, requesting branch → source, customer, reference, salesperson, created at, acknowledged by/at, closed by/at + reason.
-- **Lines:** product (code + name), requested, released, **remaining**.
-- **Releases:** each SRL with date, destination (To branch / Customer pickup), lines, released by, its transfer number and the transfer's status.
-- **Actions by status:**
+- **Header:** SR number, transaction, status, branch → source, customer, reference, salesperson, created / acknowledged / closed (who, when, reason).
+- **Lines:** product, requested, released, **remaining**.
+- **Releases:** each SRL — date, destination (To branch / Customer pickup), lines, who, transfer number and its status.
+- **Actions:**
 
 | Status | Storekeeper (source) | Requesting salesperson | Admin |
 | --- | --- | --- | --- |
-| Pending | Acknowledge, Reject | Cancel | all |
-| Acknowledged | Release, Reject | Cancel | all |
-| Partially released | Release, Close | Close | all |
+| Pending | Acknowledge · Reject | Cancel | all |
+| Acknowledged | Release · Reject | Cancel | all |
+| Partially released | Release · Close | Close | all |
 | Released | Close | Close | all |
 | Rejected / Cancelled / Closed | — | — | — |
 
-- Reject, Cancel and Close need a reason. Releasing before Acknowledge is not allowed — show only the buttons that are valid.
-- **API:** `GET /stock-requests/{id}/`, `POST …/acknowledge/`, `…/release/`, `…/reject/ {reason}`, `…/cancel/ {reason}`, `…/close/ {reason}`.
+- Reject, Cancel, Close need a reason. Show only valid buttons (no release before acknowledge).
+- **API:** `GET /stock-requests/{id}/` · `POST …/acknowledge/` · `…/release/` · `…/reject/ {reason}` · `…/cancel/ {reason}` · `…/close/ {reason}`.
 
-### P-33 Release stock — Ready (storekeeper, admin)
+### P-33 Release stock (storekeeper) — phone first
 
-The storekeeper "confirms the quantity actually released". Design for a phone as well as a PC.
-
-1. For each line: quantity to release now — defaults to the remaining quantity, with **All** and **−/+** buttons; 0 means skip the line.
-2. **Destination:** **To branch** (goods go to the requesting branch; it must receive them) or **Customer pickup** (the customer collects at Pawlos; only possible when the request names a customer).
+1. Each open line: quantity taken out now — default the remaining, **All**, **− / +**; 0 skips the line.
+2. **Destination:** **To branch** (the branch must receive it) or **Customer pickup** (only when the request names a customer).
 3. Optional note.
-4. Summary + **Confirm** → shows the release number (SRL) and, for branch, the transfer number (TR).
+4. Summary → **Confirm** → release number (SRL) and, for branch, transfer number (TR).
 
-- **API:** `POST /stock-requests/{id}/release/ {destination_type: "branch"|"customer_pickup", lines:[{line_id, qty}], note}`.
+**API:** `POST /stock-requests/{id}/release/ {destination_type: "branch"|"customer_pickup", lines:[{line_id, qty}], note}`.
 
-### P-40 New sale — P3
+### P-40 New sale — the most-used screen; fast at the counter
 
-The most-used screen. It must be fast at the counter.
+1. **Customer** (picker; **Walk-in** in one click; + New). Show type, credit allowed, limit and what they owe.
+2. **Channel:** Walk-in or Phone order (phone orders start as Pending).
+3. **Lines:** product picker → price **for this customer** (resellers get wholesale, labelled "Wholesale"), stock here and at Pawlos; quantity; **source** "From this branch" (taken now) or "From Pawlos" (a stock request is created on confirm); **condition** new / display / damaged (display and damaged only from this branch); **discount** per line in ETB (above the owner's limit needs `approve_discounts`). No price typing.
+4. **Receipt type:** Official receipt · Without receipt.
+5. **Pay now (optional):** account (only the user's allowed accounts; an official-receipt sale offers **Organization only**), amount, method, receipt number (required for Organization on an official sale, one per payment; never for Personal).
+6. **Totals:** total · paid now · remaining (credit).
+7. **Confirm.** A remaining balance needs a customer with credit within their limit, unless the user has `approve_credit` — show the reason clearly ("ABC Furniture would owe 160,000, above their limit of 150,000").
 
-1. **Customer:** search by name/phone/shop, or **Walk-in customer** (one click), or **+ New customer** (P-62 in a side panel). Show the customer's credit status and outstanding balance.
-2. **Channel:** Walk-in or Phone order.
-3. **Lines:** product search by code/name → for each product show the price **for this customer** (wholesale for resellers, D11 — label it "Wholesale") and **stock at my branch and at Pawlos**. Quantity. **Source:** "From this branch" (taken now) or "From Pawlos" (creates a stock request when the sale is confirmed). Unit price comes from the product and **cannot be typed**. **Condition:** new (default), or a **display / damaged** piece from this branch's stock (D15) — usually with a discount. Discount per line (limit set by the owner in Settings, P-84; above it needs `approve_discounts`).
-4. **Receipt type** ("payment type"): **Official receipt** or **Without receipt**.
-5. **Payment now (optional):** amount, account (only accounts this user may use; Organization/Personal clearly marked; an official-receipt sale offers **only Organization accounts**), method, receipt number (required for official receipt + Organization — one per payment; not allowed for Personal), pay for specific lines (optional).
-6. **Totals:** total, paid now, remaining (= credit).
-7. **Confirm sale.** If the customer has no credit or the remaining balance is over their limit, block with a clear message unless the user has `approve_credit`. [Q11]
+After confirm: the SO number large · delivery note button(s) · what happens next ("20 × VC-001 requested from Pawlos — SR-…").
 
-- **After confirm:** show the SO number large, the delivery note button (P-43), and what happens next ("15 × VC-001 requested from Pawlos — SR-…").
-- **Rules:** official-receipt sales accept only Organization payments, each with its own receipt number (D3, confirmed by the owner).
-- **API:** `POST /orders/ {…, payment?}`, `POST /orders/{id}/confirm/`.
+**API:** `POST /orders/ {customer, branch?, channel, receipt_type, notes, lines:[{product, qty, discount, source_location?, condition}], payment?: {account, amount, method, receipt_number?, paid_at?, note?}}` → draft/pending; `PATCH /orders/{id}/` while draft/pending; `POST /orders/{id}/confirm/`.
 
-### P-41 Sales / orders list — P3
+### P-41 Sales list
 
-- **Columns:** SO number, date, customer, branch, salesperson, channel, total, paid, remaining, fulfilment status, payment status, receipt type.
-- **Scope:** salespeople see **only their own** (D9).
-- **Filters:** number, status, payment status, customer, branch, salesperson, date range, receipt type.
-- **API:** `GET /orders/?number=&status=&payment_status=&customer=&branch=&salesperson=&from=&to=`.
+- **Columns:** SO number, date (EC first), customer, branch, salesperson, channel, total, paid, remaining, fulfilment, payment, receipt type.
+- **Scope:** salespeople only their own (D9); storekeepers the sales their warehouse supplies.
+- **Filters:** number, status, payment status, customer, branch, salesperson, channel, receipt type, from, to; search (number, customer name or phone).
+- **API:** `GET /orders/?number=&status=&payment_status=&customer=&branch=&salesperson=&channel=&receipt_type=&from=&to=&search=`.
 
-### P-42 Sale detail — P3
+### P-42 Sale detail
 
-- **Header:** SO number, status chips, customer (link), branch, salesperson, channel, receipt type, dates; "Replaces SO-…" / "Replaced by SO-…" when voided and re-issued.
-- **Lines:** product, qty, unit price, discount, line total, source, released, **held at the branch** (arrived from Pawlos, waiting for the customer), returned, **paid for this line**.
-- **Totals box:** total · paid · remaining.
-- **Payments:** date, PAY number, amount, **Organization/Personal**, account, status, recorded by (the client's example table). Personal amounts follow `view_personal_payments`.
-- **Delivery notes and stock requests** linked to this sale.
-- **History** tab = P-05.
-- **Actions (by status and permission):** Edit (draft/pending only), Confirm, Record payment (P-50), **Hand over at branch** (goods held for the sale first, then free branch stock), **Request remaining stock** (after a rejected or short request), Mark prepared (storekeeper), Cancel (before any handover, reason), Return goods (P-45), **Void** (`correct_transactions`, reason), Print each delivery note.
-- **API:** `GET /orders/{id}/`, `GET /orders/{id}/payments/`, `GET /orders/{id}/history/`, `POST …/confirm/`, `…/release-from-branch/ {lines:[{line_id, qty}]}`, `…/request-stock/ {lines}`, `…/status/`, `…/cancel/ {reason}`, `…/return/ {location, reason, lines}`, `…/void/ {reason}`; `PATCH /orders/{id}/` while draft/pending.
+- **Header:** SO number, chips, customer (link), branch, salesperson, channel, receipt type, dates; "Replaces / Replaced by SO-…".
+- **Lines:** product, condition, qty, unit price, discount, line total, source, released, **held at branch** (arrived, waiting for the customer), returned, **paid for this line**, remaining.
+- **Totals:** total · paid · remaining.
+- **Payments** (the client's table): date, PAY number, amount, **Organization / Personal**, account, status, recorded by.
+- Delivery notes, stock requests and returns of this sale. **History** tab = P-05.
+- **Actions by status and permission:** Edit (draft/pending) · Confirm · Record payment (P-50) · **Hand over at branch** (held goods first, then free branch stock) · **Request remaining stock** (after a rejected or short request) · Mark prepared (storekeeper) · Cancel (before any handover, reason) · Return goods (P-45) · Void (P-45) · Print delivery notes.
+- **API:** `GET /orders/{id}/` · `GET /orders/{id}/payments/` · `GET /orders/{id}/history/` · `POST …/confirm/` · `…/release-from-branch/ {lines:[{line_id, qty}]}` · `…/request-stock/ {lines:[{line_id, qty}]}` · `…/status/ {"status": "prepared"}` · `…/cancel/ {reason}` · `…/return/` · `…/void/ {reason}`.
 
-### P-43 Delivery note (print / PDF) — P3
+### P-43 Delivery note (print / PDF)
 
-Replaces the 3-copy paper pad (copies: storekeeper, accountant, pad).
+Replaces the three-copy paper pad. One per handover (branch, or pickup at Pawlos), so a sale can have several.
 
-- **Layout:** company header, **transaction (SO) number in large type**, DN number, date, customer (name, shop, phone, city), table (code, product, qty, unit price, total), payment summary (total, paid, remaining), three signature lines: salesperson, storekeeper, customer. [Q10: VAT fields; Q13: match the current paper — get a photo of it.]
-- A4 portrait, black and white friendly. Also viewable on screen.
-- A sale can have several delivery notes — one per handover (at the branch, or the customer's pickup at Pawlos).
-- **API:** `GET /delivery-notes/?order={id}`, `GET /delivery-notes/{id}/pdf/`.
+- A4 portrait, black-and-white friendly: **SO number in large type**, DN number, **date Ethiopian first** (`መስከረም 26, 2019 (06/10/2026) 16:36`), from (location), customer (name, shop, phone, city), salesperson, receipt type, table (code, product, qty, unit price, total), sale total / paid / remaining, signature lines: salesperson · storekeeper · customer. [Q10: VAT; Q13: match the current paper.]
+- **API:** `GET /delivery-notes/?order={id}` · `GET /delivery-notes/{id}/pdf/` (the PDF is rendered by the server; show it in a viewer with Print).
 
-### P-44 Phone orders board — P3
+### P-44 Phone orders board
 
-For out-of-city orders (Jimma, Bahir Dar, Mekele…): **Pending → Confirmed → Prepared → Released**.
+Out-of-city orders: **Pending → Confirmed → Prepared → Released**.
 
-- **Board or list grouped by status** with customer, city, lines, payment status.
-- Storekeeper marks **Prepared**; release happens through the stock request (customer pickup). No company delivery (D8) — never show a "Delivered/Shipping" step.
-- **API:** `GET /orders/?channel=phone&status=…`, `POST /orders/{id}/status/ {"status":"prepared"}`.
+- Columns or grouped list by status: customer, city, lines, payment status, request status.
+- Storekeeper marks **Prepared**; release happens on the request (customer pickup). **No company delivery (D8)** — never a "Shipping / Delivered" step.
+- **API:** `GET /orders/?channel=phone&status=` · `POST /orders/{id}/status/ {"status": "prepared"}`.
 
-### P-45 Return goods and Void sale (dialogs) — P3
+### P-45 Return goods · Void sale (dialogs)
 
-- **Return goods:** pick lines and quantities (and whether each comes back **new or damaged**), the location receiving them, reason. Reduces the sale total and the customer balance. [Q7]
-- **Void sale** (`correct_transactions`): for a sale entered wrongly. Shows exactly what will happen: stock goes back, the sale leaves the customer balance, its payments become the customer's credit. Reason required. Then offers **Re-issue corrected sale** (opens P-40 pre-filled, linked to the voided one).
+- **Return goods** (accountant, admin): lines and quantities (each back as **new or damaged**), receiving location, reason. The sale total drops; money paid beyond the new total becomes the customer's credit. [Q7]
+  **API:** `POST /orders/{id}/return/ {location, reason, lines:[{line_id, qty, condition}]}`.
+- **Void sale** (`correct_transactions`): for a sale entered wrongly — "Stock goes back, the sale leaves the customer's balance, its payments become the customer's credit." Reason required. Then **Re-issue corrected sale** opens P-40 pre-filled and linked (`replaces`). Not possible after a return.
+  **API:** `POST /orders/{id}/void/ {reason}` · `POST /orders/ {…, replaces: <id>}`.
 
-### P-50 Record payment — P3
+### P-50 Record payment
 
-Opened from a sale, from a customer, or from the menu.
+From a sale, a customer, or the menu.
 
-- **Fields:** customer, amount, account (salespeople: only their allowed accounts), method (bank / cash / mobile money), receipt number (only for Organization; required for official-receipt sales), date-time paid, note.
-- **Allocation:** pay specific sales and/or specific lines ("For: 10 chairs"); the rest stays as customer credit (advance). Show each open sale's remaining and each line's remaining. Money not allocated stays the customer's advance until the accountant allocates it (owner's answer, Q20); an optional **Pay oldest first** button helps the accountant.
-- **Live checks:** cannot allocate more than the payment, more than a sale's remaining or more than a line's remaining; official sale + Personal account → blocked; Personal + receipt number → blocked.
-- After saving: PAY number. Salesperson payments show **Unverified** until the accountant verifies.
-- **API:** `POST /payments/ {customer_id, account_id, amount, method, receipt_number?, paid_at, allocations:[{order_id, line_id?, amount}]}`.
+- Customer, amount, account (salespeople: only their allowed accounts, only for their own sales), method (bank / cash / mobile money), receipt number (Organization only), date-time paid, note.
+- **Allocation:** to specific sales and/or specific lines ("For: 10 chairs"), showing each sale's and line's remaining. Unallocated money stays the customer's **advance** until the accountant allocates it (Q20).
+- **Live checks:** not more than the payment, a sale's remaining or a line's remaining; official sale + Personal → blocked; Personal + receipt → blocked; a receipt number already used → blocked.
+- Salespeople's payments start **Unverified**; the accountant's are verified at once.
+- **API:** `POST /payments/ {customer, account, amount, method, receipt_number?, paid_at?, note, allocations:[{order, line?, amount}]}`.
 
-### P-51 Payments list — P3
+### P-51 Payments
 
-- **Columns:** PAY number, date, customer, amount, account, **kind (Organization/Personal)**, method, receipt number, status, recorded by, allocated to.
-- **Totals bar** for the current filter: Organization · Personal · Combined.
-- **Filters:** number, receipt number, account, account kind, status, customer, sale, salesperson, branch, date range.
-- **Scope:** salespeople — own payments only. Personal amounts follow `view_personal_payments`.
-- **API:** `GET /payments/?…`.
+- **Columns:** PAY number, date (EC first), customer, amount, account, **kind**, method, receipt, status, recorded by, allocated to.
+- **Totals bar:** Organization · Personal · Combined for the current filters (from P-70 Payments).
+- **Filters:** number, receipt number, account, kind, status, customer, sale, salesperson, branch, recorded by, from, to; search.
+- Salespeople: payments they recorded or that pay their sales.
+- **API:** `GET /payments/?number=&receipt_number=&account=&account_kind=&status=&customer=&order=&salesperson=&branch=&recorded_by=&from=&to=&search=`.
 
-### P-52 Payments to verify — P3 (`verify_payments`)
+### P-52 Payments to verify (`verify_payments`)
 
-- Queue of **Unverified** payments, oldest first, with who recorded them and the related sale.
-- **Verify** (one click) / **Reject** (reason). Bulk verify is welcome.
-- **API:** `GET /payments/?status=unverified`, `POST /payments/{id}/verify/`, `…/reject/ {reason}`.
+- Queue of unverified payments, oldest first: amount, account and kind, receipt, customer, sale, recorded by.
+- **Verify** (one click) · **Reject** (reason: e.g. "not on the bank statement"). Bulk verify welcome.
+- **API:** `GET /payments/?status=unverified&ordering=paid_at` · `POST /payments/{id}/verify/` · `…/reject/ {reason}`.
 
-### P-53 Payment detail — P3
+### P-53 Payment detail
 
-- **Shows:** everything recorded + its permanent history (recorded by → amount → account → date-time → sale/customer, then each verify/reject/reverse/correct with who and why) — the "Important Permission" requirement.
-- **Actions:** Verify / Reject (`verify_payments`); **Correct** (`correct_payments`: change amount, account, date or receipt number — creates a new payment and reverses the old one, linked); Reverse (`correct_payments`, reason); Allocate remaining credit (accountant/admin).
-- **API:** `GET /payments/{id}/`, `POST …/verify/`, `…/reject/`, `…/reverse/`, `…/correct/`, `…/allocate/`, `…/allocate-oldest-first/`.
+- Everything recorded, the allocations (active and released, with why), and the permanent history: recorded → verified / rejected / reversed / corrected, each with who and when; "Corrects PAY-…" / "Corrected by PAY-…".
+- **Actions:** Verify / Reject (`verify_payments`) · **Correct** (`correct_payments`: new amount, account, method, date or receipt; reverses the old one and links them) · Reverse (`correct_payments`, reason) · Allocate advance / **Pay oldest first** (accountant, admin).
+- **API:** `GET /payments/{id}/` · `POST …/verify/` · `…/reject/ {reason}` · `…/reverse/ {reason}` · `…/correct/ {reason, amount?, account?, method?, receipt_number?, paid_at?, allocations?}` · `…/allocate/ {allocations}` · `…/allocate-oldest-first/`.
 
-### P-60 Customers list — P3
+### P-60 Customers
 
-- **Columns:** name, shop name, phone, city, type (Walk-in / Reseller / Out-of-city), credit allowed, credit limit, **outstanding**, total purchases.
-- **Filters:** search (name, phone, shop), type, city, has balance, over limit.
-- **Action:** **New customer** (salespeople can).
-- **API:** `GET /customers/?search=&type=&city=`.
+- **Columns:** name, shop, phone, city, type (Walk-in / Reseller / Out-of-city), credit allowed, credit limit, **owes** *(section 8)*.
+- **Filters:** search (name, phone, shop), type, city, credit allowed, active.
+- **New customer** (salespeople can).
+- **API:** `GET /customers/?search=&type=&city=&credit_allowed=&is_active=`.
 
-### P-61 Customer detail — P3
+### P-61 Customer detail & statement
 
 The client's example: "ABC Furniture — Total purchases 500,000 · Payments 350,000 · Outstanding 150,000".
 
-- **Summary:** total purchases, total paid, outstanding, advance (unallocated credit), credit allowed, limit.
-- **Statement:** date, document (sale or payment), debit, credit, **running balance**; each payment shows Organization/Personal. Date-range filter, print.
-- **Tabs:** sales, payments, stock requests.
-- **Actions:** Record payment (P-50), New sale for this customer, Edit.
-- **API:** `GET /customers/{id}/`, `/balance/`, `/statement/?from=&to=`.
+- **Summary:** total purchases, total paid, **outstanding**, prepaid, unallocated (advance), credit allowed, limit.
+- **Statement:** date (`date_ec`), document, debit, credit, **running balance**; payments show Organization / Personal. Date range (Ethiopian picker), print.
+- Tabs: sales · payments · stock requests. Actions: Record payment · New sale · Edit.
+- **API:** `GET /customers/{id}/` · `/customers/{id}/balance/` · `/customers/{id}/statement/?from=&to=` → `opening_balance`, `rows`, `closing_balance`.
 
-### P-62 Customer create / edit — P3
+### P-62 Customer create / edit
 
-- **Fields:** name, phone, shop/company name, city, type, notes; **credit allowed** and **credit limit** (editable only with `approve_credit`, read-only for others).
-- **Rules:** a phone number already used by another customer shows a warning, not a block (resellers may share a number).
-- **API:** `POST /customers/`, `PATCH /customers/{id}/`.
+- Name, phone, shop / company, city, type, notes; **credit allowed** and **credit limit** (editable only with `approve_credit`).
+- A phone already used by another customer is a **warning**, not an error (the API returns `warnings`).
+- **API:** `POST /customers/` · `PATCH /customers/{id}/`.
 
-### P-70 Reports — P4
+### P-70 Reports
 
-Each report: filters at the top, totals, table, **Export Excel** (`export_reports`). Daily, weekly, monthly and yearly come automatically to the owner by Telegram too.
+Each report: period picker, filters, totals, table, **Export Excel** (`export_reports`). The daily, weekly, monthly and yearly sales reports also reach the owner by Telegram.
 
-| Report | Contents | Filters |
+| Report | Shows | Filters |
 | --- | --- | --- |
-| Sales | Total sales, number of sales, paid vs credit, official vs no-receipt, by salesperson, by branch, products and quantities sold, best sellers; yearly view by month | Period (day/week/month/year or dates), branch, salesperson, customer, category |
-| Payments | Organization, Personal, Combined — per day/week/month/year; payment list | Date, customer, salesperson, branch, sale, account type, account |
-| Credit | Outstanding per customer with age (0–30, 31–60, 61–90, 90+ days); credit collected in the period | Date, customer, type, city |
-| Stock | The P-20 matrix with low-stock flags | Location, category |
-| Stock movements | Every movement with reference and person | Date, product, location, type |
-| Open requests | Requests not finished, how long they've been waiting | Branch, status |
-| Unverified payments | Payments waiting for the accountant | Date, salesperson |
+| **Sales** | Sales, returns, net sales, transactions; paid vs still owed (credit); official vs no receipt; money received Organization / Personal / Combined; by branch; by salesperson; products and quantities; best sellers; a 13-row Ethiopian month table for a year | period, branch, salesperson, customer, category |
+| **Payments** | Organization, Personal, Combined, grouped by day / week / Ethiopian month / year; the payment list | period, customer, account, account kind, sale, salesperson, branch; group by |
+| **Credit** | Outstanding per customer, aged 0–30 / 31–60 / 61–90 / 90+ days; total outstanding; credit collected in the period | period, customer |
+| **Stock** | The P-20 matrix with display, damaged, sellable, minimum, low flag | category |
+| **Movements** | Every movement with condition, transaction, reference, person | period, product, location, type |
+| **Open requests** | Requests not finished and how long they've waited | — |
+| **Unverified payments** | Payments waiting for the accountant | — |
 
-- Salespeople see only their own sales summary; storekeepers see stock and movements. Personal figures follow `view_personal_payments`.
-- **Period picker:** Today / This week / This month / This year — **months and years are Ethiopian** (D16), with a switch for Gregorian — or a from–to range. Show each report's `period_label`. **Sales** shows sales, returns, net, paid vs still owed, official vs no receipt, money received (Organization / Personal), by branch, by salesperson, products; long periods add a month-by-month table.
-- **API:** `GET /reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?period=day|week|month|year&date=YYYY-MM-DD` (or `?from=&to=`), filters as in the table, `&format=xlsx` for Excel; payments also `&group_by=day|week|month|year`.
+- **Who:** salespeople — Sales (own figures only); storekeepers — Stock, Movements, Open requests (their location); accountant and admin — all. Personal figures need `view_personal_payments`.
+- **Period:** Today · This week (Mon–Sun) · This month · This year — **Ethiopian months and years by default (D16)**, Gregorian on request — or a from–to range. Show the returned `period_label`.
+- **API:** `GET /reports/{sales|payments|credit|stock|movements|open-requests|unverified-payments}/?period=day|week|month|year&date=&calendar=ethiopian|gregorian` or `?from=&to=`; filters as above; `&group_by=` (payments); `&format=xlsx` downloads Excel.
 
-### P-80 Users and permissions — Ready (admin)
+### P-80 Users & permissions (admin)
 
 - **List:** name, username, role, home location, Telegram linked, active.
-- **Create / edit:** username, full name, phone, role, home location (required for salesperson and storekeeper), active, password (set/reset), **permissions** (checkboxes from `GET /permissions/`, each with its label and which roles get it by default).
-- **Rules:** a new user gets their role's default permissions; **changing the role resets permissions to the new role's defaults** — warn before saving. Users are deactivated, never deleted. Every change is recorded in the audit log. Admins always have every permission (show all ticked and locked). Allowed payment accounts per salesperson are added in P3.
-- **API:** `GET/POST /users/`, `PATCH /users/{id}/ {…, permissions:[…]}`, `GET /permissions/`.
+- **Create / edit:** username, full name, phone, role, home location (needed for salespeople and storekeepers), active, password (set / reset), **permissions** (checkboxes with labels and default roles), **allowed payment accounts** (for salespeople).
+- A new user gets the role's default permissions; **changing the role resets them** — warn before saving. Admins have everything (show ticked and locked). Deactivate, never delete. Every change is audited.
+- **API:** `GET/POST /users/` · `PATCH /users/{id}/ {…, permissions:[…], allowed_payment_accounts:[ids]}` · `GET /permissions/`.
 
-### P-81 Locations — Ready (admin; others read)
+### P-81 Locations (admin; others read)
 
-- **List/edit:** code, name, type (shop, warehouse, sub-store), parent, can sell, can release, active.
-- **In Transit** is a system location: show it, but read-only (no edit, no deactivate).
+- Code, name, type (shop / warehouse / sub-store), parent, can sell, can release, active.
+- **In Transit** is a system location: shown, never editable.
 - **API:** `GET/POST/PATCH /locations/`.
 
-### P-82 Payment accounts — P3 (admin)
+### P-82 Payment accounts (admin; others read)
 
-- **Fields:** name, **kind (Organization / Personal)**, method (bank / cash / mobile money), bank name, account number, owner name, active. [Q8: the real list comes from the client.]
-- Which salespeople may use each account is set on the user (P-80) or here.
-- The owner enters the real accounts here once the system is live (Q8).
+- Name, **kind (Organization / Personal)**, method (bank / cash / mobile money), bank name, account number, owner name, active. The owner enters the real accounts once live (Q8).
+- Salespeople only ever see the accounts they're allowed (set on P-80).
 - **API:** `GET/POST/PATCH /payment-accounts/`.
 
-### P-84 Settings — P3 (admin)
+### P-83 Audit log (accountant read, admin)
 
-- **Salesperson discount limit (%)** — the owner sets it (D13). Starts at 0%: every discount needs approval. Show who changed it last and when; every change goes to the audit log.
-- Room for later settings (company name and address on the delivery note, etc.).
-- **API:** `GET/PATCH /api/v1/settings/` [P3].
+"Who changed what, and when" for every important change.
 
-### P-83 Audit log — Ready (accountant read, admin)
-
-"Who changed it + what was changed + date/time" for every important change.
-
-- **Columns:** date-time, who, action (e.g. price change, user updated, adjustment approved, stock request rejected), object (type + number/name, linked), before → after (readable diff), reason, source (web / bot / system), IP.
-- **Filters:** object type, object, person, action, date range.
-- Read-only — no edit, no delete.
+- **Columns:** date-time, who, action (price change, user updated, adjustment approved, payment reversed, …), object (type + number/name, linked), before → after (readable), reason, source (web / bot / system), IP.
+- **Filters:** object type (`model`), object id, person, action, source, from, to. Read-only.
 - **API:** `GET /audit/?model=&object_id=&actor=&action=&source=&from=&to=`.
+
+### P-84 Settings (admin; everyone reads)
+
+- **Salesperson discount limit (%)** — set by the owner (D13); starts at 0% (every discount needs approval). Show who changed it last and when.
+- Room for later settings (company name and address on the delivery note, …).
+- **API:** `GET /settings/` · `PATCH /settings/ {max_salesperson_discount_pct}`.
 
 ---
 
-## 6. Open points that affect the design
+## 8. Backend gaps for the frontend
+
+Small additions the backend still needs before these parts of the design can be wired:
+
+| Page | Needs |
+| --- | --- |
+| P-14 Import products | An upload endpoint (check + import) around the existing `import_products` command |
+| P-60 Customers, P-02 accountant | What each customer owes in the customer list, and filters "has a balance" / "over their limit" (today only `/customers/{id}/balance/` per customer) |
+| P-02 dashboards | Optional: a single "my dashboard" endpoint, to save several calls per page load |
+
+---
+
+## 9. Open client questions that affect the design
 
 | Question | What may change |
 | --- | --- |
-| Q4, Q18 | Whether "Underground" is its own stock column; low-stock minimum per location |
-| Q10, Q13 | VAT fields and layout of the delivery note (P-43) |
-| Q12 | Ethiopian calendar and Amharic on screens and printouts |
-| Q16 | An extra "Approved" step before the storekeeper can release (P-32) |
-| Q19 | Transaction number prefix (`SO-` or the client's `PS-`) |
+| Q4, Q18 | Whether Underground is its own stock column; low-stock minimum per location |
+| Q7 | How returns work today (P-45) |
+| Q10, Q13 | VAT on official-receipt notes; the delivery note layout (send a photo of the current paper) |
+| Q16 | An "Approved" step before the storekeeper may release (P-32) |
+| Q19 | Transaction prefix: `SO-` or the client's `PS-` |
