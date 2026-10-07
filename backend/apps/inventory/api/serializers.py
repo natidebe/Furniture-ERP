@@ -91,18 +91,21 @@ class GoodsReceiptSerializer(serializers.ModelSerializer):
 
     location = serializers.PrimaryKeyRelatedField(queryset=Location.objects.all(),
                                                   required=False)
+    location_code = serializers.CharField(source="location.code", read_only=True)
+    received_by_name = serializers.CharField(source="received_by.full_name", read_only=True)
     lines = LineInputSerializer(many=True, write_only=True)
 
     class Meta:
         model = GoodsReceipt
-        fields = ["id", "number", "location", "reference", "received_at", "received_by",
-                  "note", "lines"]
+        fields = ["id", "number", "location", "location_code", "reference", "received_at",
+                  "received_by", "received_by_name", "note", "lines"]
         read_only_fields = ["number", "received_by"]
 
     def to_representation(self, receipt):
         data = super().to_representation(receipt)
         data["lines"] = [{"product": line.product_id, "product_code": line.product.code,
-                          "qty": line.qty} for line in receipt.lines.select_related("product")]
+                          "product_name": line.product.name, "qty": line.qty}
+                         for line in receipt.lines.select_related("product")]
         return data
 
 
@@ -111,14 +114,17 @@ class AdjustmentSerializer(serializers.ModelSerializer):
     location_code = serializers.CharField(source="location.code", read_only=True)
     movement_number = serializers.CharField(source="movement.number", default=None,
                                             read_only=True)
+    proposed_by_name = serializers.CharField(source="proposed_by.full_name", read_only=True)
+    decided_by_name = serializers.CharField(source="decided_by.full_name", default=None,
+                                            read_only=True)
     reason = serializers.ChoiceField(choices=AdjustmentReason.choices)
 
     class Meta:
         model = StockAdjustment
         fields = ["id", "number", "location", "location_code", "product", "product_code",
                   "qty_delta", "condition", "reason", "note", "status", "proposed_by",
-                  "proposed_at",
-                  "decided_by", "decided_at", "decision_note", "movement_number"]
+                  "proposed_by_name", "proposed_at", "decided_by", "decided_by_name",
+                  "decided_at", "decision_note", "movement_number"]
         read_only_fields = ["number", "status", "proposed_by", "proposed_at", "decided_by",
                             "decided_at", "decision_note"]
 
@@ -130,14 +136,17 @@ class DecisionSerializer(serializers.Serializer):
 class TransferSerializer(serializers.ModelSerializer):
     from_location_code = serializers.CharField(source="from_location.code", read_only=True)
     to_location_code = serializers.CharField(source="to_location.code", read_only=True)
+    sent_by_name = serializers.CharField(source="sent_by.full_name", read_only=True)
+    received_by_name = serializers.CharField(source="received_by.full_name", default=None,
+                                             read_only=True)
     lines = TransferLineInputSerializer(many=True, write_only=True)
 
     class Meta:
         model = StockTransfer
         fields = ["id", "number", "from_location", "from_location_code", "to_location",
                   "to_location_code", "status", "transaction_number", "stock_request",
-                  "sent_by", "sent_at", "received_by", "received_at", "discrepancy_note",
-                  "note", "lines"]
+                  "sent_by", "sent_by_name", "sent_at", "received_by", "received_by_name",
+                  "received_at", "discrepancy_note", "note", "lines"]
         read_only_fields = ["number", "status", "transaction_number", "stock_request",
                             "sent_by", "sent_at", "received_by", "received_at",
                             "discrepancy_note"]
@@ -145,7 +154,8 @@ class TransferSerializer(serializers.ModelSerializer):
     def to_representation(self, transfer):
         data = super().to_representation(transfer)
         data["lines"] = [{"id": line.pk, "product": line.product_id,
-                          "product_code": line.product.code, "condition": line.condition,
+                          "product_code": line.product.code,
+                          "product_name": line.product.name, "condition": line.condition,
                           "qty_sent": line.qty_sent, "qty_received": line.qty_received}
                          for line in transfer.lines.select_related("product")]
         return data
