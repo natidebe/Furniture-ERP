@@ -87,12 +87,16 @@ def payment_dict(payment, user) -> dict:
         "recorded_by_name": payment.recorded_by.full_name,
         "recorded_at": payment.created_at,
         "verified_by": payment.verified_by_id,
+        "verified_by_name": payment.verified_by.full_name if payment.verified_by_id else None,
         "verified_at": payment.verified_at,
         "closed_by": payment.closed_by_id,
+        "closed_by_name": payment.closed_by.full_name if payment.closed_by_id else None,
         "closed_at": payment.closed_at,
         "close_reason": payment.close_reason,
         "replaces": payment.replaces.number if payment.replaces_id else None,
+        "replaces_id": payment.replaces_id,
         "replaced_by": getattr(getattr(payment, "replaced_by", None), "number", None),
+        "replaced_by_id": getattr(getattr(payment, "replaced_by", None), "pk", None),
         "note": payment.note,
         "hidden": not visible,
         "allocations": allocations,
@@ -119,12 +123,16 @@ class PaymentOutputSerializer(serializers.Serializer):
     recorded_by_name = serializers.CharField()
     recorded_at = serializers.DateTimeField()
     verified_by = serializers.IntegerField(allow_null=True)
+    verified_by_name = serializers.CharField(allow_null=True)
     verified_at = serializers.DateTimeField(allow_null=True)
     closed_by = serializers.IntegerField(allow_null=True)
+    closed_by_name = serializers.CharField(allow_null=True)
     closed_at = serializers.DateTimeField(allow_null=True)
     close_reason = serializers.CharField()
     replaces = serializers.CharField(allow_null=True)
+    replaces_id = serializers.IntegerField(allow_null=True)
     replaced_by = serializers.CharField(allow_null=True)
+    replaced_by_id = serializers.IntegerField(allow_null=True)
     note = serializers.CharField()
     hidden = serializers.BooleanField()
     allocations = serializers.ListField(child=serializers.DictField())

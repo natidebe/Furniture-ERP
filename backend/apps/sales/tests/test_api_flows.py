@@ -130,9 +130,13 @@ def test_accountant_verifies_rejects_and_reverses(as_user, staff, loc, goods, ab
     acct = as_user(staff.accountant)
     queue = acct.get("/api/v1/payments/?status=unverified").data
     assert queue["count"] == 3
-    assert acct.post(f"/api/v1/payments/{ids[0]}/verify/").data["status"] == "verified"
-    assert acct.post(f"/api/v1/payments/{ids[1]}/reject/", {"reason": "Not in bank"},
-                     format="json").data["status"] == "rejected"
+    verified = acct.post(f"/api/v1/payments/{ids[0]}/verify/").data
+    assert (verified["status"], verified["verified_by_name"]) == (
+        "verified", staff.accountant.full_name)
+    rejected = acct.post(f"/api/v1/payments/{ids[1]}/reject/", {"reason": "Not in bank"},
+                         format="json").data
+    assert (rejected["status"], rejected["closed_by_name"]) == (
+        "rejected", staff.accountant.full_name)
     assert acct.post(f"/api/v1/payments/{ids[2]}/reverse/", {"reason": "Duplicate"},
                      format="json").data["status"] == "reversed"
     audit = acct.get("/api/v1/audit/?model=payments.Payment").data

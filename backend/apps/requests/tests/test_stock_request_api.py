@@ -133,3 +133,27 @@ def test_open_filter_is_the_queue_pending_first(client_for, make_user, loc, prod
 
     assert [r["number"] for r in rows] == [pending.number, acknowledged.number]
     assert [r["number"] for r in closed] == [cancelled.number]
+
+
+@pytest.mark.django_db
+def test_detail_names_the_people_and_links_the_transfer(api_client, make_user, loc, product,
+                                                        pawlos_stock):
+    from apps.requests import services
+
+    salesperson = make_user(role="salesperson", home_location=loc.PIA)
+    store = make_user(role="storekeeper", home_location=loc.PAW)
+    request = services.create_stock_request(
+        requesting_location=loc.PIA, source_location=loc.PAW, salesperson=salesperson,
+        lines=[{"product": product, "qty": 2}])
+    services.acknowledge_request(request=request, user=store)
+    line = request.lines.get()
+    services.release_stock(request=request, storekeeper=store, destination_type="branch",
+                           lines=[{"line_id": line.pk, "qty": 2}])
+    api_client.force_authenticate(salesperson)
+
+    data = api_client.get(f"/api/v1/stock-requests/{request.pk}/").data
+
+    assert data["acknowledged_by_name"] == store.full_name
+    release = data["releases"][0]
+    assert release["transfer_status"] == "in_transit"
+    assert release["transfer_id"] is not None

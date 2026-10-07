@@ -9,13 +9,17 @@ from apps.requests.models import DestinationType, StockRelease, StockRequest
 class StockReleaseSerializer(serializers.ModelSerializer):
     transfer_number = serializers.CharField(source="transfer.number", default=None,
                                             read_only=True)
+    transfer_id = serializers.IntegerField(source="transfer.pk", default=None, read_only=True)
+    transfer_status = serializers.CharField(source="transfer.status", default=None,
+                                            read_only=True)
     released_by_name = serializers.CharField(source="released_by.full_name", read_only=True)
     lines = serializers.SerializerMethodField()
 
     class Meta:
         model = StockRelease
         fields = ["id", "number", "transaction_number", "destination_type", "transfer_number",
-                  "released_by", "released_by_name", "released_at", "note", "lines"]
+                  "transfer_id", "transfer_status", "released_by", "released_by_name",
+                  "released_at", "note", "lines"]
 
     def get_lines(self, release) -> list[dict]:
         return [{"product": line.product_id, "product_code": line.product.code,
@@ -50,6 +54,9 @@ class StockRequestSerializer(serializers.ModelSerializer):
         data = super().to_representation(request)
         data["requesting_location_code"] = request.requesting_location.code
         data["source_location_code"] = request.source_location.code
+        data["acknowledged_by_name"] = (request.acknowledged_by.full_name
+                                        if request.acknowledged_by_id else None)
+        data["closed_by_name"] = request.closed_by.full_name if request.closed_by_id else None
         data["lines"] = [
             {"id": line.pk, "product": line.product_id, "product_code": line.product.code,
              "product_name": line.product.name, "qty_requested": line.qty_requested,

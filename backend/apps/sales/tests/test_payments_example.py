@@ -169,6 +169,12 @@ def test_correcting_a_payment_links_old_and_new(order_100k, staff, accounts, abc
     assert fixed.replaces == wrong
     assert money.order_paid(order_100k) == D("4000")
 
+    from apps.payments.api.serializers import payment_dict
+
+    wrong.refresh_from_db()
+    assert payment_dict(fixed, staff.accountant)["replaces_id"] == wrong.pk
+    assert payment_dict(wrong, staff.accountant)["replaced_by_id"] == fixed.pk
+
 
 @pytest.mark.django_db
 def test_verify_and_reject_need_the_permission(order_100k, staff, accounts, abc):
