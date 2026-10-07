@@ -262,3 +262,32 @@ def test_delivery_note_pdf(as_user, staff, loc, goods, walk_in, stock):
     assert response.status_code == 200
     assert response["Content-Type"] == "application/pdf"
     assert response.content[:4] == b"%PDF"
+
+
+@pytest.mark.django_db
+def test_owing_filter_lists_unpaid_and_partly_paid_sales(as_user, staff, loc, goods, abc,
+                                                         walk_in, accounts, stock):
+    from apps.payments import services as payments
+    from apps.sales import services as sales
+
+    stock(goods.desk, loc.PIA, 5)
+
+    def sale(customer):
+        order = sales.create_order(customer=customer, branch=loc.PIA, user=staff.accountant,
+                                   lines=[{"product": goods.desk, "qty": 1}])
+        return sales.confirm_order(order=order, user=staff.accountant)
+
+    unpaid, partial, paid = sale(abc), sale(abc), sale(abc)
+    for order, amount in ((partial, "5000"), (paid, "20000")):
+        payments.record_payment(customer=abc, account=accounts.org, amount=D(amount),
+                                method="bank", recorded_by=staff.accountant,
+                                receipt_number=f"R-{order.pk}",
+                                allocations=[{"order": order, "line": None, "amount": D(amount)}])
+    draft = sales.create_order(customer=walk_in, branch=loc.PIA, user=staff.accountant,
+                               lines=[{"product": goods.desk, "qty": 1}])
+    client = as_user(staff.accountant)
+
+    owing = {o["id"] for o in client.get("/api/v1/orders/", {"owing": "true"}).data["results"]}
+
+    assert owing == {unpaid.pk, partial.pk}
+    assert draft.pk not in owing

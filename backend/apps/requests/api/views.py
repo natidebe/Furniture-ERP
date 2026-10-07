@@ -1,4 +1,6 @@
+from django.db.models import Case, IntegerField, Value, When
 from django.shortcuts import get_object_or_404
+from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -8,6 +10,7 @@ from apps.accounts.permissions import role_permission
 from apps.core.exceptions import BusinessRuleError
 from apps.locations.models import Location
 from apps.requests import selectors, services
+from apps.requests.models import OPEN_STATUSES, RequestStatus, StockRequest
 
 from .serializers import (
     ReleaseSerializer,
@@ -21,14 +24,32 @@ CanRequestStock = role_permission("salesperson", "admin")
 IsStorekeeper = role_permission("storekeeper", "admin")
 
 
+class StockRequestFilter(filters.FilterSet):
+    open = filters.BooleanFilter(
+        method="filter_open",
+        label="Open requests (pending, acknowledged, partially released), Pending first")
+
+    class Meta:
+        model = StockRequest
+        fields = ["status", "requesting_location", "source_location", "customer", "salesperson"]
+
+    def filter_open(self, queryset, name, value):
+        if not value:
+            return queryset.exclude(status__in=OPEN_STATUSES)
+        # The storekeeper's work queue (P-30): Pending first, newest first within each.
+        return (queryset.filter(status__in=OPEN_STATUSES)
+                .annotate(pending_first=Case(When(status=RequestStatus.PENDING, then=Value(0)),
+                                             default=Value(1), output_field=IntegerField()))
+                .order_by("pending_first", "-created_at"))
+
+
 class StockRequestViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                           mixins.CreateModelMixin, viewsets.GenericViewSet):
     """Salespeople see their branch's requests, storekeepers their warehouse's, accountants
     and admins all. Status changes only through the actions below."""
 
     serializer_class = StockRequestSerializer
-    filterset_fields = ["status", "requesting_location", "source_location", "customer",
-                        "salesperson"]
+    filterset_class = StockRequestFilter
     search_fields = ["number", "transaction_number", "reference", "customer__name",
                      "lines__product__code"]
 

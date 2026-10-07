@@ -101,3 +101,33 @@ def test_admin_dashboard_adds_branches_and_low_stock(api_client, staff, credit_s
 @pytest.mark.django_db
 def test_dashboard_needs_login(api_client):
     assert api_client.get(URL).status_code == 401
+
+
+@pytest.mark.django_db
+def test_storekeeper_queue_counts_every_status(api_client, staff, loc, goods, stock):
+    stock(goods.chair, loc.PAW, 50)
+    for _ in range(12):  # more than the 10 items the block lists
+        requests.create_stock_request(
+            requesting_location=loc.PIA, source_location=loc.PAW, salesperson=staff.sales,
+            lines=[{"product": goods.chair, "qty": 1}])
+    api_client.force_authenticate(staff.store)
+
+    queue = api_client.get(URL).data["request_queue"]
+
+    assert (queue["count"], len(queue["items"])) == (12, 10)
+    assert queue["by_status"] == {"pending": 12}
+
+
+@pytest.mark.django_db
+def test_payments_to_verify_carry_their_id(api_client, staff, credit_sale, accounts):
+    from apps.payments import services as payments
+
+    staff.sales.allowed_payment_accounts.add(accounts.org)
+    payment = payments.record_payment(
+        customer=credit_sale.customer, account=accounts.org, amount=Decimal("1000"),
+        method="bank", recorded_by=staff.sales, receipt_number="R-9", allocations=[])
+    api_client.force_authenticate(staff.accountant)
+
+    item = api_client.get(URL).data["payments_to_verify"]["items"][0]
+
+    assert (item["id"], item["number"]) == (payment.pk, payment.number)

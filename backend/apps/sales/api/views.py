@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -8,7 +9,12 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsSalesStaff, role_permission
 from apps.core.exceptions import BusinessRuleError
 from apps.sales import selectors, services
-from apps.sales.models import FulfillmentStatus, OrderPaymentStatus, SalesOrder
+from apps.sales.models import (
+    BILLABLE_STATUSES,
+    FulfillmentStatus,
+    OrderPaymentStatus,
+    SalesOrder,
+)
 
 from .serializers import (
     DeliveryNoteSerializer,
@@ -44,10 +50,17 @@ class OrderFilter(filters.FilterSet):
     number = filters.CharFilter(lookup_expr="iexact")
     date_from = filters.DateFilter(field_name="created_at", lookup_expr="date__gte")
     date_to = filters.DateFilter(field_name="created_at", lookup_expr="date__lte")
+    owing = filters.BooleanFilter(method="filter_owing",
+                                  label="Confirmed sales not fully paid (unpaid or partial)")
 
     class Meta:
         model = SalesOrder
         fields = ["customer", "branch", "salesperson", "channel", "receipt_type"]
+
+    def filter_owing(self, queryset, name, value):
+        owing = Q(fulfillment_status__in=BILLABLE_STATUSES,
+                  payment_status__in=(OrderPaymentStatus.UNPAID, OrderPaymentStatus.PARTIAL))
+        return queryset.filter(owing) if value else queryset.exclude(owing)
 
 
 OrderFilter.base_filters["from"] = OrderFilter.base_filters.pop("date_from")

@@ -7,7 +7,7 @@ the same rules as the lists and reports the tiles link to.
 
 from datetime import timedelta
 
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, Count, IntegerField, Value, When
 from django.utils import timezone
 
 from apps.customers.selectors import customers_with_balance
@@ -109,8 +109,12 @@ def salesperson_dashboard(user) -> dict:
 def storekeeper_dashboard(user) -> dict:
     location = user.home_location_id
     movements = movements_for_user(user).order_by("-occurred_at", "-id")
+    queue = _open_requests(user)
+    by_status = {row["status"]: row["n"] for row in
+                 requests_for_user(user).filter(status__in=OPEN_STATUSES)
+                 .order_by().values("status").annotate(n=Count("id", distinct=True))}
     return {
-        "request_queue": _block(_open_requests(user), _request_row),
+        "request_queue": {**_block(queue, _request_row), "by_status": by_status},
         "low_stock": _low_stock(),
         "recent_movements": _block(movements, lambda m: {
             "id": m.pk, "number": m.number, "type": m.type, "condition": m.condition,
