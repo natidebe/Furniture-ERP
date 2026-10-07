@@ -396,7 +396,7 @@ def unverified_payments_report(user, filters: dict | None = None) -> dict:
           .select_related("customer", "account", "recorded_by").order_by("paid_at"))
     if not _sees_personal(user):
         qs = qs.exclude(account__kind="personal")
-    rows = [{"number": p.number, "paid_at": p.paid_at, "date_ec": _ec(p.paid_at),
+    rows = [{"id": p.pk, "number": p.number, "paid_at": p.paid_at, "date_ec": _ec(p.paid_at),
              "customer": p.customer.name,
              "amount": _money(p.amount), "account": p.account.name, "kind": p.account.kind,
              "receipt_number": p.receipt_number, "recorded_by": p.recorded_by.full_name}

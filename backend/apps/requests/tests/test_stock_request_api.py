@@ -106,3 +106,30 @@ def test_salesperson_cannot_release(client_for, loc, product, pawlos_stock):
         "destination_type": "branch", "lines": [{"line_id": 1, "qty": 1}]}, format="json")
 
     assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_open_filter_is_the_queue_pending_first(client_for, make_user, loc, product,
+                                                pawlos_stock):
+    from apps.requests import services
+
+    salesperson = make_user(role="salesperson", home_location=loc.PIA)
+    store = make_user(role="storekeeper", home_location=loc.PAW)
+
+    def new_request():
+        return services.create_stock_request(
+            requesting_location=loc.PIA, source_location=loc.PAW, salesperson=salesperson,
+            lines=[{"product": product, "qty": 1}])
+
+    acknowledged = new_request()
+    services.acknowledge_request(request=acknowledged, user=store)
+    cancelled = new_request()
+    services.cancel_request(request=cancelled, user=salesperson, reason="Customer changed mind")
+    pending = new_request()
+    client, _ = client_for("admin")
+
+    rows = client.get("/api/v1/stock-requests/", {"open": "true"}).data["results"]
+    closed = client.get("/api/v1/stock-requests/", {"open": "false"}).data["results"]
+
+    assert [r["number"] for r in rows] == [pending.number, acknowledged.number]
+    assert [r["number"] for r in closed] == [cancelled.number]
