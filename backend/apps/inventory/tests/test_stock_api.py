@@ -114,7 +114,7 @@ def test_reverse_endpoint_needs_permission_and_reason(api_client, make_user, loc
 
 @pytest.mark.django_db
 def test_goods_receipt_api_defaults_to_pawlos(client_for, loc, product, balance):
-    client, _ = client_for("storekeeper", home_location=loc.PAW)
+    client, user = client_for("storekeeper", home_location=loc.PAW)
 
     response = client.post("/api/v1/goods-receipts/", {
         "reference": "Container 12", "lines": [{"product": product.pk, "qty": 40}]},
@@ -122,8 +122,33 @@ def test_goods_receipt_api_defaults_to_pawlos(client_for, loc, product, balance)
 
     assert response.status_code == 201, response.data
     assert response.data["lines"] == [{"product": product.pk, "product_code": "VC-001",
-                                       "qty": 40}]
+                                       "product_name": "Visitor chair", "qty": 40}]
+    assert response.data["location_code"] == "PAW"
+    assert response.data["received_by_name"] == user.full_name
     assert balance(product, loc.PAW) == (40, 0)
+
+
+@pytest.mark.django_db
+def test_lists_name_the_people_involved(api_client, staff, loc, product, stock):
+    """Adjustments and transfers carry names for the web lists, not only user ids."""
+    from apps.inventory import services
+
+    stock(product, loc.PAW, 10)
+    adjustment = services.propose_adjustment(location=loc.PAW, product=product, qty_delta=-1,
+                                             reason="damage", user=staff.store)
+    services.approve_adjustment(adjustment=adjustment, user=staff.accountant)
+    services.send_transfer(from_location=loc.PAW, to_location=loc.PIA,
+                           lines=[{"product": product, "qty": 2}], user=staff.admin)
+    api_client.force_authenticate(staff.admin)
+
+    adj = api_client.get("/api/v1/adjustments/").data["results"][0]
+    transfer = api_client.get("/api/v1/transfers/").data["results"][0]
+
+    assert (adj["proposed_by_name"], adj["decided_by_name"]) == (
+        staff.store.full_name, staff.accountant.full_name)
+    assert (transfer["sent_by_name"], transfer["received_by_name"]) == (
+        staff.admin.full_name, None)
+    assert transfer["lines"][0]["product_name"] == "Visitor chair"
 
 
 @pytest.mark.django_db
