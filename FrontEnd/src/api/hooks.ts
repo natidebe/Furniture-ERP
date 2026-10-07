@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, errorMessage } from './client'
 import type { Params } from './client'
 import type {
@@ -6,13 +6,17 @@ import type {
 } from './types'
 import { useToast } from '../components/Toast'
 
-/** GET a path; the query key is the path plus its params, so lists refetch on filter change. */
+/**
+ * GET a path; the query key is the path plus its params, so lists refetch on filter change.
+ * While a new filter or page loads, the previous rows of the SAME path stay on screen; data from
+ * another path (another report, another product) is never shown in its place — its shape differs.
+ */
 export function useApi<T>(path: string | null, params?: Params, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: [path, params ?? {}],
     queryFn: () => api.get<T>(path as string, params),
     enabled: path !== null,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[0] === path ? previous : undefined),
     refetchInterval: options?.refetchInterval,
   })
 }

@@ -54,7 +54,7 @@ export default function Reports() {
       )}
       {DATED.includes(name) && <PeriodPicker value={period} onChange={setPeriod} />}
       <ReportFilters name={name} filters={filters} setFilter={setFilter} groupBy={groupBy} setGroupBy={setGroupBy} />
-      {q.isLoading ? <Loading /> : q.error ? <ErrorBanner error={q.error} /> : q.data && (
+      {q.isLoading || q.isPlaceholderData ? <Loading /> : q.error ? <ErrorBanner error={q.error} /> : q.data && (
         <>
           {name === 'sales' && <SalesReport d={q.data} />}
           {name === 'payments' && <PaymentsReport d={q.data} />}

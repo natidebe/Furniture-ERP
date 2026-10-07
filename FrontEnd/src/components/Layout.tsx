@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useApi, useLocations } from '../api/hooks'
+import { ErrorBoundary } from './ErrorBoundary'
 import type { Dashboard } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { formatEc, formatGreg, toEthiopian, todayAddis, weekdayName } from '../lib/ethiopian'
@@ -79,7 +80,7 @@ export function Layout() {
       </nav>
       <div className="main-col">
         <TopBar onMenu={() => setOpen(true)} />
-        <Outlet />
+        <ErrorBoundary resetKey={location.pathname}><Outlet /></ErrorBoundary>
       </div>
     </div>
   )
