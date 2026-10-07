@@ -2,7 +2,20 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import (
+    BooleanField,
+    Case,
+    DecimalField,
+    ExpressionWrapper,
+    F,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from apps.core.ethiopian import format_both
@@ -47,8 +60,32 @@ def customer_balance(customer) -> dict:
     }
 
 
+_MONEY = DecimalField(max_digits=14, decimal_places=2)
+
+
+def _total(qs, field):
+    return Coalesce(Subquery(qs.values("customer").annotate(t=Sum(field)).values("t"),
+                             output_field=_MONEY), Value(ZERO), output_field=_MONEY)
+
+
 def customers_with_balance():
-    return Customer.objects.all()
+    """Customers annotated with `outstanding` (what they owe, as in customer_balance) and
+    `over_limit`: they owe money without being allowed credit, or more than their limit —
+    the same test a new sale on credit has to pass."""
+    purchases = _total(SalesOrder.objects.filter(customer=OuterRef("pk"),
+                                                 fulfillment_status__in=BILLABLE_STATUSES),
+                       "total_amount")
+    paid = _total(Payment.objects.filter(customer=OuterRef("pk"),
+                                         status__in=VALID_PAYMENT_STATUSES), "amount")
+    return Customer.objects.annotate(
+        outstanding=Greatest(ExpressionWrapper(purchases - paid, output_field=_MONEY),
+                             Value(ZERO), output_field=_MONEY),
+    ).annotate(over_limit=Case(
+        When(Q(outstanding__gt=0) & (Q(credit_allowed=False)
+                                      | Q(credit_limit__isnull=False,
+                                          outstanding__gt=F("credit_limit"))),
+             then=Value(True)),
+        default=Value(False), output_field=BooleanField()))
 
 
 @dataclass

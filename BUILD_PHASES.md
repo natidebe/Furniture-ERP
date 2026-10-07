@@ -2,7 +2,8 @@
 
 **Stack:** Python 3.12 · Django 5.x · Django REST Framework · PostgreSQL 16 · Celery + Redis · aiogram 3
 **Timeline:** 12 weeks, 5 phases. Each phase ends with a **gate** the client signs off before the next starts.
-**Last updated:** 5 Oct 2026
+**Last updated:** 7 Oct 2026
+**Status (7 Oct 2026):** Phases 1–4 are built and tested; the boxes still open in them are client answers and staging / sign-off steps. Phase 5 has not started.
 **Layout:** the code lives in `backend/`, and `FOLDER_STRUCTURE.md` shows where every file goes.
 
 How to use this file:
@@ -122,7 +123,7 @@ sentry-sdk>=2.10
   - `AUTH_USER_MODEL = "accounts.User"`
   - DRF defaults: JWT auth, `IsAuthenticated`, `PageNumberPagination` (page size 25), `DjangoFilterBackend`, `SearchFilter`, `OrderingFilter`
   - `SPECTACULAR_SETTINGS` with title "Furniture ERP API"
-- [ ] CI with GitHub Actions (`.github/workflows/ci.yml`): ruff → `makemigrations --check` → pytest with a Postgres service → build the Docker image.
+- [x] CI with GitHub Actions (`.github/workflows/ci.yml`): ruff → `makemigrations --check` → pytest with a Postgres service → build the Docker image.
 - [x] Health endpoint `GET /health/` (`apps/core/views.py`) returning `{"status": "ok"}` after checking the DB connection, or 503 if the DB is down.
 
 ### 1.2 `core` app — shared base pieces
@@ -297,7 +298,7 @@ def change_price(*, product: Product, new_price: Decimal, user, reason: str = ""
 - [x] Helper `apps/audit/services.py::audit_log(actor, action, obj, before=None, after=None, reason="", source="web")`.
 - [x] Middleware `apps/audit/middleware.py` that stores the request IP and source (`X-Client: bot` header → `bot`) in a context variable for `audit_log` to read.
 - [x] Register `simple_history` on Product, Location and User for field-level history.
-- [ ] Register it on Customer (Phase 2.1) and PaymentAccount (Phase 3.3) when those models are created.
+- [x] Register it on Customer (Phase 2.1) and PaymentAccount (Phase 3.3) when those models are created.
 - [x] Endpoint `GET /api/v1/audit/?model=&object_id=&actor=&from=&to=` → accountant (read) and admin.
 - [x] The AuditLog admin is read-only: no add, change or delete.
 
@@ -1048,6 +1049,13 @@ Minimum: 10 pcs
 - [x] Payments report filtered by order returns only that order's payments; Personal rows and totals are hidden without `view_personal_payments`.
 - [x] Excel export without `export_reports` returns 403.
 - [x] Yearly report monthly rows add up to the yearly totals.
+
+### 4.5a Endpoints for the web UI (added 7 Oct 2026)
+
+- [x] `GET /api/v1/dashboard/` — each role's home page (P-02) in one call: one `{count, items}` block per tile.
+- [x] `outstanding` and `over_limit` on every customer in `GET /customers/`; filters `has_balance`, `over_limit`; `ordering=-outstanding` (P-60).
+- [x] `GET /products/import-template/` and `POST /products/import/` (multipart, `dry_run`) for the admin's Import products page (P-14); the import logic is shared with `manage.py import_products` (`apps/catalog/importing.py`).
+- [x] Tests for all three (`test_dashboard.py`, `test_customer_balance_list.py`, `test_import_api.py`).
 
 ### 4.6 Definition of done
 
