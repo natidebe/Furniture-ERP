@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, Back-End]
+    branches: [main, Back-End, Front-End]
   pull_request:
-    branches: [main, Back-End]
+    branches: [main, Back-End, Front-End]
 
 defaults:
   run:
@@ -59,3 +59,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t furniture-erp:ci .
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FrontEnd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: FrontEnd/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

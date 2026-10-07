@@ -8,5 +8,6 @@ Stock, sales, payments and customer credit system for an office furniture import
 - `FOLDER_STRUCTURE.md` — where each file lives
 - `UI_PAGES.md` — every web page to design: users, content, actions, rules and API
 - `backend/` — Django REST API, Celery jobs and the bot ([backend/README.md](backend/README.md))
+- `FrontEnd/` — the React web app, every page in UI_PAGES.md ([FrontEnd/README.md](FrontEnd/README.md))
 
-Branches: `Back-End` is the working branch for the backend; `main` is production.
+Branches: `Back-End` is the working branch for the backend, `Front-End` for the web app; `main` is production.
