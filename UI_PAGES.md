@@ -2,9 +2,9 @@
 
 **For:** the designer and the frontend developer.
 **Based on:** the client's requirements (`userequirements.md`), decisions D1–D16 in `BUILD_PHASES.md`, and the backend in `backend/` (Phases 1–4 built and tested).
-**Last updated:** 6 Oct 2026
+**Last updated:** 7 Oct 2026
 
-This document lists every page of the web app: who uses it, what it shows, what people can do there, the rules it must respect, and the API it calls. The backend for every page exists, except where section 8 says otherwise. Try any endpoint in Swagger at `/api/schema/swagger-ui/` with the demo users (see `backend/README.md`).
+This document lists every page of the web app: who uses it, what it shows, what people can do there, the rules it must respect, and the API it calls. The backend for every page exists (section 8). Try any endpoint in Swagger at `/api/schema/swagger-ui/` with the demo users (see `backend/README.md`).
 
 Places marked **[Q…]** depend on a client answer that is still open (section 9).
 
@@ -161,7 +161,7 @@ Grey = not started · blue = in progress · green = done · amber = needs attent
 | P-11 | Product detail | all |
 | P-12 | Product create / edit | admin |
 | P-13 | Change price (dialog) | admin |
-| P-14 | Import products | admin — *needs an endpoint (section 8)* |
+| P-14 | Import products | admin |
 | P-20 | Stock overview (matrix) | all |
 | P-21 | Low stock | all |
 | P-22 | Stock movements | storekeeper, accountant, admin |
@@ -213,10 +213,19 @@ Short and actionable; every tile links to its filtered list.
 | --- | --- |
 | Salesperson | Search box (product code → stock card) · **New sale** · my sales today (total, count) · my sales waiting for payment · my open stock requests · transfers arriving at my branch (Receive) · goods held at my branch for my customers |
 | Storekeeper | **Request queue** — Pending, then Acknowledged / Partially released, newest first, with branch, customer, salesperson and lines (the main screen) · low stock · recent movements at my warehouse · my transfers not yet received |
-| Accountant | Payments to verify (count + list) · today: sales, paid, credit, received Organization / Personal · adjustments to approve · transfers with shortages · customers over their limit *(section 8)* |
+| Accountant | Payments to verify (count + list) · today: sales, paid, credit, received Organization / Personal · adjustments to approve · transfers with shortages (last 30 days) · customers over their limit |
 | Admin | The accountant's dashboard + low-stock products + today's sales by branch and salesperson |
 
-**API:** `GET /reports/sales/?period=day` · `GET /payments/?status=unverified` · `GET /stock-requests/?status=` · `GET /transfers/?status=in_transit&to_location=` · `GET /stock/summary/?low=true` · `GET /stock/movements/` · `GET /adjustments/?status=proposed` · `GET /orders/?payment_status=unpaid`.
+**API:** `GET /dashboard/` — everything for the user's role in one call: `role`, then one block per tile, each `{count, items}` (the first 10; the tile links to its filtered list for the rest).
+
+| Role | Blocks |
+| --- | --- |
+| Salesperson | `sales_today`, `waiting_for_payment`, `open_requests`, `transfers_arriving`, `held_for_customers` |
+| Storekeeper | `request_queue` (Pending first), `low_stock`, `recent_movements`, `transfers_not_received` |
+| Accountant | `payments_to_verify` (+ `total`), `today`, `adjustments_to_approve`, `transfers_with_shortages`, `customers_over_limit` |
+| Admin | The accountant's blocks + `low_stock`; `today` adds `by_branch` and `by_salesperson` |
+
+The tiles link to: `GET /orders/?payment_status=unpaid` · `GET /payments/?status=unverified` · `GET /stock-requests/?status=` · `GET /transfers/?status=in_transit&to_location=` · `GET /stock/summary/?low=true` · `GET /stock/movements/` · `GET /adjustments/?status=proposed` · `GET /customers/?over_limit=true`.
 
 ### P-03 My profile
 
@@ -281,7 +290,7 @@ The top-bar search accepts anything.
 
 - **Download template** → upload the filled `.xlsx` → **Check** (dry run: "would create 120, update 4, change 3 prices") → row errors if any ("row 7: unknown unit 'boxes'") → **Import**. One bad row stops the whole import.
 - Template columns: Code, Name, Category, Unit, Price, Wholesale price, Min stock, Description.
-- **API:** server command today (`manage.py import_products`); the web page needs an upload endpoint — section 8.
+- **API:** `GET /products/import-template/` → the `.xlsx` template · `POST /products/import/` (multipart: `file`, `dry_run=true` for **Check**) → `{dry_run, created, updated, price_changed, unchanged}`; on any error `400 {"code": "import_failed", "detail", "errors": ["row 7: unknown unit 'boxes'", …]}` and nothing is saved. Admin only; `.xlsx` up to 5 MB.
 
 ### P-20 Stock overview (matrix)
 
@@ -478,10 +487,10 @@ From a sale, a customer, or the menu.
 
 ### P-60 Customers
 
-- **Columns:** name, shop, phone, city, type (Walk-in / Reseller / Out-of-city), credit allowed, credit limit, **owes** *(section 8)*.
-- **Filters:** search (name, phone, shop), type, city, credit allowed, active.
+- **Columns:** name, shop, phone, city, type (Walk-in / Reseller / Out-of-city), credit allowed, credit limit, **owes** (`outstanding`), with an amber **Over limit** chip when `over_limit` (owes without credit allowed, or more than the limit).
+- **Filters:** search (name, phone, shop), type, city, credit allowed, active, **has a balance**, **over their limit**. Sort by name or by what they owe.
 - **New customer** (salespeople can).
-- **API:** `GET /customers/?search=&type=&city=&credit_allowed=&is_active=`.
+- **API:** `GET /customers/?search=&type=&city=&credit_allowed=&is_active=&has_balance=&over_limit=&ordering=-outstanding` — each row has `outstanding` and `over_limit`.
 
 ### P-61 Customer detail & statement
 
@@ -553,13 +562,13 @@ Each report: period picker, filters, totals, table, **Export Excel** (`export_re
 
 ## 8. Backend gaps for the frontend
 
-Small additions the backend still needs before these parts of the design can be wired:
+None. The three gaps listed here earlier are closed:
 
-| Page | Needs |
+| Page | Now |
 | --- | --- |
-| P-14 Import products | An upload endpoint (check + import) around the existing `import_products` command |
-| P-60 Customers, P-02 accountant | What each customer owes in the customer list, and filters "has a balance" / "over their limit" (today only `/customers/{id}/balance/` per customer) |
-| P-02 dashboards | Optional: a single "my dashboard" endpoint, to save several calls per page load |
+| P-14 Import products | `GET /products/import-template/` and `POST /products/import/` (check + import) |
+| P-60 Customers, P-02 accountant | `outstanding` and `over_limit` on every customer; filters `has_balance`, `over_limit`; sort `ordering=-outstanding` |
+| P-02 dashboards | `GET /dashboard/` — one call per page load |
 
 ---
 

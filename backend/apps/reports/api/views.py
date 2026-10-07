@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.reports import excel, selectors
+from apps.reports.dashboard import dashboard
 from apps.reports.history import transaction_history
 from apps.reports.search import search
 
@@ -19,6 +20,15 @@ ROLE_REPORTS = {
 DATED = {"sales", "payments", "credit", "movements"}
 FILTERS = ("branch", "salesperson", "customer", "order", "account", "category", "product",
            "location")
+
+
+class DashboardView(APIView):
+    """The home page for the signed-in user's role in one call (P-02)."""
+
+    @extend_schema(responses=OpenApiResponse(
+        description="role, then one block per tile: {count, items[]} (see reports/dashboard.py)"))
+    def get(self, request):
+        return Response(dashboard(request.user))
 
 
 class SearchView(APIView):

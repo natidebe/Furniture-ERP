@@ -1,4 +1,5 @@
 from django.utils.dateparse import parse_date
+from django_filters import rest_framework as filters
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
@@ -11,18 +12,34 @@ from apps.customers.models import Customer
 from .serializers import CustomerBalanceSerializer, CustomerSerializer, StatementSerializer
 
 
+class CustomerFilter(filters.FilterSet):
+    has_balance = filters.BooleanFilter(method="filter_has_balance",
+                                        label="Owes money (outstanding > 0)")
+    over_limit = filters.BooleanFilter(field_name="over_limit",
+                                       label="Owes without credit, or above their limit")
+
+    class Meta:
+        model = Customer
+        fields = ["type", "city", "credit_allowed", "is_active"]
+
+    def filter_has_balance(self, queryset, name, value):
+        return queryset.filter(outstanding__gt=0) if value else queryset.filter(outstanding=0)
+
+
 class CustomerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
                       mixins.UpdateModelMixin, viewsets.GenericViewSet):
     """Sales staff (salespeople, accountants, admins) see and create customers. Credit terms
     change only with approve_credit. Customers are deactivated, never deleted."""
 
-    queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     permission_classes = [IsSalesStaff]
-    filterset_fields = ["type", "city", "credit_allowed", "is_active"]
+    filterset_class = CustomerFilter
     search_fields = ["name", "phone", "shop_name"]
-    ordering_fields = ["name", "created_at"]
+    ordering_fields = ["name", "created_at", "outstanding"]
     http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        return selectors.customers_with_balance()
 
     def _with_warnings(self, response, customer):
         others = selectors.phone_used_by_others(customer.phone, exclude_pk=customer.pk)
@@ -33,13 +50,15 @@ class CustomerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.C
         return response
 
     def perform_create(self, serializer):
-        serializer.instance = services.create_customer(user=self.request.user,
-                                                       **serializer.validated_data)
+        customer = services.create_customer(user=self.request.user,
+                                            **serializer.validated_data)
+        serializer.instance = self.get_queryset().get(pk=customer.pk)
 
     def perform_update(self, serializer):
-        serializer.instance = services.update_customer(user=self.request.user,
-                                                       customer=serializer.instance,
-                                                       **serializer.validated_data)
+        customer = services.update_customer(user=self.request.user,
+                                            customer=serializer.instance,
+                                            **serializer.validated_data)
+        serializer.instance = self.get_queryset().get(pk=customer.pk)
 
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)

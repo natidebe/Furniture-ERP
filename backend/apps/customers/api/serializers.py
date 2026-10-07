@@ -11,11 +11,16 @@ class CustomerSerializer(serializers.ModelSerializer):
     credit_limit = serializers.DecimalField(max_digits=14, decimal_places=2,
                                             min_value=Decimal("0"), required=False,
                                             allow_null=True)
+    # From selectors.customers_with_balance(): what they owe now, and whether that breaks
+    # their credit terms.
+    outstanding = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    over_limit = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Customer
         fields = ["id", "name", "phone", "shop_name", "city", "type", "credit_allowed",
-                  "credit_limit", "notes", "is_active", "created_at"]
+                  "credit_limit", "notes", "is_active", "created_at", "outstanding",
+                  "over_limit"]
         read_only_fields = ["created_at"]
 
     def get_fields(self):

@@ -61,3 +61,19 @@ class PriceHistorySerializer(serializers.ModelSerializer):
         model = PriceHistory
         fields = ["id", "price_type", "old_price", "new_price", "changed_by", "changed_by_name",
                   "changed_at", "reason"]
+
+
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
+
+
+class ImportProductsSerializer(serializers.Serializer):
+    file = serializers.FileField(help_text="The filled .xlsx template")
+    dry_run = serializers.BooleanField(default=False,
+                                       help_text="Check only: report what would change")
+
+    def validate_file(self, value):
+        if not value.name.lower().endswith(".xlsx"):
+            raise serializers.ValidationError("Upload an .xlsx file.")
+        if value.size > MAX_IMPORT_BYTES:
+            raise serializers.ValidationError("The file is larger than 5 MB.")
+        return value
